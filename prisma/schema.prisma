@@ -1,0 +1,1373 @@
+// LOC'CONNECT : schéma de données (cahier des charges V1.4)
+// Montants en entiers (FCFA / XOF, sans décimales). Dates de location en @db.Date, intervalle semi-ouvert [début, fin).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum AccountType {
+  CLIENT
+  LENDER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum RoleScope {
+  PLATFORM
+  LENDER
+}
+
+enum LenderStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum MemberStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum ProductStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  REJECTED
+  INACTIVE
+}
+
+enum PricingUnit {
+  DAY
+}
+
+enum HoldStatus {
+  ACTIVE
+  CONVERTED
+  EXPIRED
+  RELEASED
+}
+
+enum ReservationStatus {
+  DRAFT
+  HOLD
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED
+  READY
+  DELIVERING
+  DELIVERED
+  IN_USE
+  RETURN_PENDING
+  RETURNED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+  DISPUTED
+}
+
+enum FulfillmentType {
+  PICKUP
+  DELIVERY
+}
+
+enum PaymentKind {
+  INITIAL
+  MODIFICATION
+  EXTRA_CHARGE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  ORANGE_MONEY
+  MTN_MONEY
+  MOOV_MONEY
+  WAVE
+  CARD
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum BalanceEntryKind {
+  SALE
+  DELIVERY_FEE
+  DEPOSIT_CAPTURE
+  REFUND_DEDUCTION
+  RECOVERY_OFFSET
+  MANUAL_RECOVERY
+  PAYOUT_ADJUSTMENT
+}
+
+enum TransactionType {
+  PAYMENT_RECEIVED
+  COMMISSION
+  DEPOSIT_HELD
+  DEPOSIT_RELEASED
+  DEPOSIT_WITHHELD
+  REFUND
+  PAYOUT
+  RECOVERY
+  EXTRA_CHARGE
+  ADJUSTMENT
+}
+
+enum TransactionDirection {
+  IN
+  OUT
+  INTERNAL
+}
+
+enum DepositStatus {
+  PENDING
+  HELD
+  RELEASED
+  PARTIALLY_WITHHELD
+  FULLY_WITHHELD
+}
+
+enum ReturnCondition {
+  EXCELLENT
+  GOOD
+  FAIR
+  DAMAGED
+  LOST
+}
+
+enum ReturnReportStatus {
+  SUBMITTED
+  CONTESTED
+  VALIDATED
+  RESOLVED
+}
+
+enum ExtraChargeStatus {
+  PENDING
+  PAID
+  WAIVED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  PENDING
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  RETURNED
+}
+
+enum RefundKind {
+  CANCELLATION
+  MODIFICATION
+  DEPOSIT_RELEASE
+  DISPUTE
+  GOODWILL
+}
+
+enum RefundType {
+  TOTAL
+  PARTIAL
+}
+
+enum RefundStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum RecoveryStatus {
+  NOT_NEEDED
+  TO_RECOVER
+  RECOVERED
+  OFFSET
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  WAITING_RESPONSE
+  RESOLVED
+  REJECTED
+  CLOSED
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  PENDING
+  HIDDEN
+}
+
+enum NotificationChannel {
+  INTERNAL
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum ModificationStatus {
+  REQUESTED
+  PENDING_VALIDATION
+  ACCEPTED
+  PENDING_PAYMENT
+  PAID
+  APPLIED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum ModificationAction {
+  ADD
+  UPDATE
+  REMOVE
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PromotionType {
+  FEATURED
+  SPONSORED
+}
+
+enum ValidationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ---------------------------------------------------------------------------
+// IDENTITÉ, RÔLES, PERMISSIONS
+// ---------------------------------------------------------------------------
+
+model User {
+  id               String      @id @default(cuid())
+  email            String      @unique
+  passwordHash     String
+  firstName        String
+  lastName         String
+  phone            String?
+  accountType      AccountType
+  status           UserStatus  @default(ACTIVE)
+  emailVerifiedAt  DateTime?
+  phoneVerifiedAt  DateTime?
+  avatarUrl        String?
+  deliveryAddress  String?
+  cityId           String?
+  city             City?       @relation(fields: [cityId], references: [id])
+  lastLoginAt      DateTime?
+  anonymizedAt     DateTime?
+  failedLoginCount Int         @default(0)
+  lockedUntil      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  sessions             Session[]
+  passwordResets       PasswordResetToken[]
+  roles                UserRole[]
+  ownedLender          Lender?
+  lenderMembership     LenderMember?         @relation("MemberUser")
+  createdMembers       LenderMember[]        @relation("MemberCreator")
+  cart                 Cart?
+  holds                Hold[]
+  reservations         Reservation[]
+  payments             Payment[]
+  favorites            Favorite[]
+  reviews              Review[]
+  notifications        Notification[]
+  disputesOpened       Dispute[]             @relation("DisputeOpener")
+  disputeMessages      DisputeMessage[]
+  auditLogs            AuditLog[]
+  clientScore          ClientScore?
+  modifications        ModificationRequest[] @relation("ModificationRequester")
+  validationsRequested ValidationAction[]    @relation("ValidationRequester")
+  validationsDecided   ValidationAction[]    @relation("ValidationDecider")
+
+  @@index([accountType, status])
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  ip        String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, revokedAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Role {
+  id          String    @id @default(cuid())
+  key         String    @unique // "SYSTEM:SUPER_ADMIN" ou "<lenderId>:CUSTOM_CODE"
+  code        String
+  name        String
+  description String?
+  scope       RoleScope
+  isSystem    Boolean   @default(false)
+  lenderId    String?
+  lender      Lender?   @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  permissions RolePermission[]
+  users       UserRole[]
+  members     LenderMember[]
+
+  @@index([scope, lenderId])
+}
+
+model Permission {
+  id     String    @id @default(cuid())
+  code   String    @unique
+  label  String
+  domain String
+  scope  RoleScope
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model Lender {
+  id                String       @id @default(cuid())
+  ownerId           String       @unique
+  owner             User         @relation(fields: [ownerId], references: [id])
+  slug              String       @unique
+  companyName       String
+  rccm              String?
+  description       String?
+  logoUrl           String?
+  coverUrl          String?
+  phone             String?
+  email             String?
+  address           String?
+  cityId            String
+  city              City         @relation(fields: [cityId], references: [id])
+  status            LenderStatus @default(PENDING)
+  validatedAt       DateTime?
+  rejectionReason   String?
+  ratingAvg         Float        @default(0)
+  reviewCount       Int          @default(0)
+  offersDelivery    Boolean      @default(true)
+  deliveryFeeLocal  Int          @default(3000)
+  deliveryFeeRemote Int          @default(8000)
+  commissionRateBps Int?
+  payoutMethod      String?
+  payoutAccount     String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  members          LenderMember[]
+  roles            Role[]
+  products         Product[]
+  unavailabilities LenderUnavailability[]
+  items            ReservationItem[]
+  allocations      PaymentAllocation[]
+  balanceEntries   BalanceEntry[]
+  payouts          Payout[]
+  deliveries       Delivery[]
+  disputes         Dispute[]
+  reviews          Review[]
+  reimbursements   LenderReimbursement[]
+  subscriptions    Subscription[]
+  lenderScore      LenderScore?
+  modifications    ModificationRequest[]
+
+  @@index([status, cityId])
+}
+
+model LenderMember {
+  id            String       @id @default(cuid())
+  lenderId      String
+  lender        Lender       @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  userId        String       @unique
+  user          User         @relation("MemberUser", fields: [userId], references: [id])
+  roleId        String
+  role          Role         @relation(fields: [roleId], references: [id])
+  status        MemberStatus @default(ACTIVE)
+  createdById   String?
+  createdBy     User?        @relation("MemberCreator", fields: [createdById], references: [id])
+  deactivatedAt DateTime?
+  createdAt     DateTime     @default(now())
+
+  @@index([lenderId, status])
+}
+
+model ValidationAction {
+  id            String           @id @default(cuid())
+  type          String
+  entity        String
+  entityId      String
+  lenderId      String?
+  requestedById String
+  requestedBy   User             @relation("ValidationRequester", fields: [requestedById], references: [id])
+  validatedById String?
+  validatedBy   User?            @relation("ValidationDecider", fields: [validatedById], references: [id])
+  status        ValidationStatus @default(PENDING)
+  reason        String?
+  payload       Json?
+  requestedAt   DateTime         @default(now())
+  validatedAt   DateTime?
+
+  @@index([status, type])
+}
+
+// ---------------------------------------------------------------------------
+// CATALOGUE
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  name        String
+  description String?
+  icon        String     @default("Package")
+  imageUrl    String?
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+  position    Int        @default(0)
+  active      Boolean    @default(true)
+  products    Product[]
+
+  @@index([parentId, active])
+}
+
+model City {
+  id        String  @id @default(cuid())
+  slug      String  @unique
+  name      String
+  region    String
+  latitude  Float?
+  longitude Float?
+  active    Boolean @default(true)
+  imageUrl  String?
+
+  products Product[]
+  lenders  Lender[]
+  users    User[]
+}
+
+model Product {
+  id                 String        @id @default(cuid())
+  slug               String        @unique
+  name               String
+  description        String
+  conditions         String?
+  unitPrice          Int
+  pricingUnit        PricingUnit   @default(DAY)
+  stockQuantity      Int
+  depositAmount      Int
+  refundPrice        Int // prix de remboursement appliqué aux unités perdues ou détruites
+  minDays            Int           @default(1)
+  maxDays            Int?
+  status             ProductStatus @default(DRAFT)
+  rejectionReason    String?
+  allowsExtraBilling Boolean       @default(true) // autorise_facturation_complementaire
+  lenderId           String
+  lender             Lender        @relation(fields: [lenderId], references: [id])
+  categoryId         String
+  category           Category      @relation(fields: [categoryId], references: [id])
+  cityId             String
+  city               City          @relation(fields: [cityId], references: [id])
+  ratingAvg          Float         @default(0)
+  reviewCount        Int           @default(0)
+  popularity         Int           @default(0)
+  deletedAt          DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  photos       ProductPhoto[]
+  priceHistory ProductPriceHistory[]
+  stockMoves   StockMovement[]
+  blocks       AvailabilityBlock[]
+  favorites    Favorite[]
+  cartItems    CartItem[]
+  holdItems    HoldItem[]
+  items        ReservationItem[]
+  reviews      Review[]
+  promotions   Promotion[]
+
+  @@index([lenderId, categoryId, cityId, status])
+  @@index([status, deletedAt])
+}
+
+model ProductPhoto {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  position  Int     @default(0)
+
+  @@index([productId, position])
+}
+
+model ProductPriceHistory {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  oldPrice    Int
+  newPrice    Int
+  changedById String?
+  createdAt   DateTime @default(now())
+
+  @@index([productId, createdAt])
+}
+
+model StockMovement {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  delta       Int
+  previousQty Int
+  newQty      Int
+  reason      String
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([productId, createdAt])
+}
+
+model AvailabilityBlock {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  quantity    Int
+  reason      String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([productId, startDate, endDate])
+}
+
+model LenderUnavailability {
+  id        String   @id @default(cuid())
+  lenderId  String
+  lender    Lender   @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  reason    String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([lenderId, startDate, endDate])
+}
+
+model Favorite {
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+}
+
+// ---------------------------------------------------------------------------
+// PANIER ET HOLD
+// ---------------------------------------------------------------------------
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime   @updatedAt
+  items     CartItem[]
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  createdAt DateTime @default(now())
+
+  @@index([cartId])
+}
+
+model Hold {
+  id                     String          @id @default(cuid())
+  userId                 String
+  user                   User            @relation(fields: [userId], references: [id])
+  status                 HoldStatus      @default(ACTIVE)
+  expiresAt              DateTime
+  durationMinutes        Int
+  fulfillmentType        FulfillmentType @default(PICKUP)
+  deliveryAddress        String?
+  deliveryCityId         String?
+  deliveryZone           String?
+  contactPhone           String?
+  convertedReservationId String?
+  releasedAt             DateTime?
+  createdAt              DateTime        @default(now())
+
+  items HoldItem[]
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+}
+
+model HoldItem {
+  id        String   @id @default(cuid())
+  holdId    String
+  hold      Hold     @relation(fields: [holdId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+
+  @@index([productId, startDate, endDate])
+  @@index([holdId])
+}
+
+// ---------------------------------------------------------------------------
+// RÉSERVATIONS
+// ---------------------------------------------------------------------------
+
+model Reservation {
+  id                 String            @id @default(cuid())
+  reference          String            @unique
+  clientId           String
+  client             User              @relation(fields: [clientId], references: [id])
+  status             ReservationStatus @default(PENDING_PAYMENT)
+  fulfillmentType    FulfillmentType   @default(PICKUP)
+  deliveryAddress    String?
+  deliveryCityId     String?
+  deliveryZone       String?
+  contactPhone       String?
+  subtotal           Int
+  deliveryFee        Int               @default(0)
+  depositTotal       Int
+  commissionTotal    Int
+  total              Int
+  currency           String            @default("XOF")
+  currentVersion     Int               @default(1)
+  holdId             String?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  items         ReservationItem[]
+  history       ReservationStatusHistory[]
+  payments      Payment[]
+  allocations   PaymentAllocation[]
+  deliveries    Delivery[]
+  disputes      Dispute[]
+  refunds       Refund[]
+  versions      ReservationVersion[]
+  modifications ModificationRequest[]
+
+  @@index([clientId, status])
+  @@index([status, createdAt])
+}
+
+model ReservationItem {
+  id                 String            @id @default(cuid())
+  reservationId      String
+  reservation        Reservation       @relation(fields: [reservationId], references: [id])
+  productId          String
+  product            Product           @relation(fields: [productId], references: [id])
+  lenderId           String
+  lender             Lender            @relation(fields: [lenderId], references: [id])
+  productName        String
+  quantity           Int
+  startDate          DateTime          @db.Date
+  endDate            DateTime          @db.Date
+  days               Int
+  unitPrice          Int
+  subtotal           Int
+  commissionRateBps  Int
+  commission         Int
+  depositAmount      Int
+  refundPrice        Int
+  allowsExtraBilling Boolean           @default(true)
+  status             ReservationStatus @default(PENDING_PAYMENT)
+  cancelledAt        DateTime?
+  refundedRental     Int               @default(0)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  deposit        Deposit?
+  returnReport   ReturnReport?
+  extraCharges   ExtraCharge[]
+  history        ReservationStatusHistory[]
+  disputes       Dispute[]
+  review         Review?
+  balanceEntries BalanceEntry[]
+  modifLines     ModificationLine[]
+
+  @@index([productId, startDate, endDate, status])
+  @@index([lenderId, status])
+  @@index([reservationId])
+}
+
+model ReservationStatusHistory {
+  id            String             @id @default(cuid())
+  reservationId String
+  reservation   Reservation        @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  itemId        String?
+  item          ReservationItem?   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  fromStatus    ReservationStatus?
+  toStatus      ReservationStatus
+  actorId       String?
+  note          String?
+  createdAt     DateTime           @default(now())
+
+  @@index([reservationId, createdAt])
+}
+
+model ReservationVersion {
+  id             String      @id @default(cuid())
+  reservationId  String
+  reservation    Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  version        Int
+  snapshot       Json
+  total          Int
+  deposit        Int
+  commission     Int
+  createdById    String?
+  modificationId String?     @unique
+  createdAt      DateTime    @default(now())
+
+  @@unique([reservationId, version])
+}
+
+// ---------------------------------------------------------------------------
+// PAIEMENTS ET FINANCE
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id             String        @id @default(cuid())
+  reference      String        @unique
+  kind           PaymentKind   @default(INITIAL)
+  reservationId  String
+  reservation    Reservation   @relation(fields: [reservationId], references: [id])
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  modificationId String?
+  extraChargeId  String?
+  amount         Int
+  currency       String        @default("XOF")
+  method         PaymentMethod
+  status         PaymentStatus @default(PENDING)
+  provider       String        @default("simulated")
+  providerRef    String?       @unique
+  idempotencyKey String        @unique
+  failureReason  String?
+  paidAt         DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  allocations  PaymentAllocation[]
+  refunds      Refund[]
+  transactions FinancialTransaction[]
+
+  @@index([reservationId, status])
+  @@index([userId, createdAt])
+}
+
+model PaymentAllocation {
+  id               String      @id @default(cuid())
+  paymentId        String
+  payment          Payment     @relation(fields: [paymentId], references: [id])
+  reservationId    String
+  reservation      Reservation @relation(fields: [reservationId], references: [id])
+  lenderId         String
+  lender           Lender      @relation(fields: [lenderId], references: [id])
+  rentalAmount     Int
+  deliveryAmount   Int         @default(0)
+  commissionAmount Int
+  netAmount        Int
+  depositAmount    Int
+  createdAt        DateTime    @default(now())
+
+  @@index([paymentId])
+  @@index([lenderId, createdAt])
+}
+
+model BalanceEntry {
+  id            String           @id @default(cuid())
+  lenderId      String
+  lender        Lender           @relation(fields: [lenderId], references: [id])
+  kind          BalanceEntryKind
+  amount        Int // positif : la plateforme doit au loueur ; négatif : le loueur doit à la plateforme
+  availableAt   DateTime
+  blocked       Boolean          @default(false)
+  reservationId String?
+  itemId        String?
+  item          ReservationItem? @relation(fields: [itemId], references: [id])
+  payoutId      String?
+  payout        Payout?          @relation(fields: [payoutId], references: [id])
+  note          String?
+  createdAt     DateTime         @default(now())
+
+  @@index([lenderId, payoutId])
+  @@index([itemId])
+}
+
+model Payout {
+  id            String       @id @default(cuid())
+  reference     String       @unique
+  lenderId      String
+  lender        Lender       @relation(fields: [lenderId], references: [id])
+  amount        Int
+  status        PayoutStatus @default(PENDING)
+  processedById String?
+  paidAt        DateTime?
+  createdAt     DateTime     @default(now())
+
+  entries BalanceEntry[]
+
+  @@index([lenderId, status])
+}
+
+model FinancialTransaction {
+  id            String               @id @default(cuid())
+  reference     String               @unique
+  type          TransactionType
+  direction     TransactionDirection
+  amount        Int
+  paymentId     String?
+  payment       Payment?             @relation(fields: [paymentId], references: [id])
+  reservationId String?
+  itemId        String?
+  lenderId      String?
+  refundId      String?
+  payoutId      String?
+  createdById   String?
+  metadata      Json?
+  createdAt     DateTime             @default(now())
+
+  @@index([type, createdAt])
+  @@index([lenderId, createdAt])
+  @@index([reservationId])
+}
+
+model Refund {
+  id            String       @id @default(cuid())
+  reference     String       @unique
+  paymentId     String
+  payment       Payment      @relation(fields: [paymentId], references: [id])
+  reservationId String
+  reservation   Reservation  @relation(fields: [reservationId], references: [id])
+  kind          RefundKind
+  type          RefundType
+  amount        Int
+  reason        String
+  status        RefundStatus @default(PENDING)
+  providerRef   String?
+  requestedById String?
+  detail        Json?
+  createdAt     DateTime     @default(now())
+  executedAt    DateTime?
+
+  reimbursements LenderReimbursement[]
+
+  @@index([reservationId])
+  @@index([paymentId])
+}
+
+model LenderReimbursement {
+  id             String         @id @default(cuid())
+  refundId       String?
+  refund         Refund?        @relation(fields: [refundId], references: [id])
+  modificationId String?
+  lenderId       String
+  lender         Lender         @relation(fields: [lenderId], references: [id])
+  impactedAmount Int
+  status         RecoveryStatus
+  balanceEntryId String?
+  recoveredAt    DateTime?
+  note           String?
+  createdAt      DateTime       @default(now())
+
+  @@index([lenderId, status])
+}
+
+model WebhookEvent {
+  id             String    @id @default(cuid())
+  provider       String
+  eventId        String
+  type           String
+  payload        Json
+  signatureValid Boolean
+  processedAt    DateTime?
+  error          String?
+  createdAt      DateTime  @default(now())
+
+  @@unique([provider, eventId])
+}
+
+// ---------------------------------------------------------------------------
+// CAUTION ET RETOUR
+// ---------------------------------------------------------------------------
+
+model Deposit {
+  id             String          @id @default(cuid())
+  itemId         String          @unique
+  item           ReservationItem @relation(fields: [itemId], references: [id])
+  amount         Int
+  withheldAmount Int             @default(0)
+  releasedAmount Int             @default(0)
+  status         DepositStatus   @default(PENDING)
+  mode           String          @default("COLLECTED")
+  heldAt         DateTime?
+  settledAt      DateTime?
+  releaseDueDate DateTime?
+  frozen         Boolean         @default(false)
+  reason         String?
+  paymentId      String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([status])
+}
+
+model ReturnReport {
+  id                String             @id @default(cuid())
+  itemId            String             @unique
+  item              ReservationItem    @relation(fields: [itemId], references: [id])
+  reportedById      String
+  rentedQuantity    Int
+  returnedQuantity  Int
+  damagedQuantity   Int                @default(0)
+  lostQuantity      Int                @default(0)
+  condition         ReturnCondition
+  comment           String?
+  refundPrice       Int
+  damageAmount      Int                @default(0)
+  withheldAmount    Int                @default(0)
+  extraChargeAmount Int                @default(0)
+  status            ReturnReportStatus @default(SUBMITTED)
+  contestDeadline   DateTime?
+  contestedAt       DateTime?
+  contestReason     String?
+  acknowledgedAt    DateTime?
+  settledAt         DateTime?
+  createdAt         DateTime           @default(now())
+
+  photos ReturnPhoto[]
+
+  @@index([status, contestDeadline])
+}
+
+model ReturnPhoto {
+  id           String       @id @default(cuid())
+  reportId     String
+  report       ReturnReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  storageKey   String
+  mimeType     String
+  uploadedById String
+  createdAt    DateTime     @default(now())
+}
+
+model ExtraCharge {
+  id        String            @id @default(cuid())
+  itemId    String
+  item      ReservationItem   @relation(fields: [itemId], references: [id])
+  reportId  String?
+  amount    Int
+  status    ExtraChargeStatus @default(PENDING)
+  reason    String
+  paymentId String?
+  createdAt DateTime          @default(now())
+
+  @@index([itemId, status])
+}
+
+// ---------------------------------------------------------------------------
+// LIVRAISON
+// ---------------------------------------------------------------------------
+
+model Delivery {
+  id            String          @id @default(cuid())
+  reservationId String
+  reservation   Reservation     @relation(fields: [reservationId], references: [id])
+  lenderId      String
+  lender        Lender          @relation(fields: [lenderId], references: [id])
+  type          FulfillmentType
+  address       String?
+  cityId        String?
+  zone          String?
+  latitude      Float?
+  longitude     Float?
+  fee           Int             @default(0)
+  scheduledDate DateTime?       @db.Date
+  slotStart     String?
+  slotEnd       String?
+  status        DeliveryStatus  @default(PENDING)
+  assignedToId  String?
+  notes         String?
+  deliveredAt   DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  proofs DeliveryProof[]
+
+  @@unique([reservationId, lenderId])
+  @@index([lenderId, status])
+}
+
+model DeliveryProof {
+  id         String   @id @default(cuid())
+  deliveryId String
+  delivery   Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  type       String   @default("PHOTO")
+  storageKey String?
+  note       String?
+  createdAt  DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// LITIGES, AVIS, NOTIFICATIONS
+// ---------------------------------------------------------------------------
+
+model Dispute {
+  id               String           @id @default(cuid())
+  reference        String           @unique
+  reservationId    String
+  reservation      Reservation      @relation(fields: [reservationId], references: [id])
+  itemId           String?
+  item             ReservationItem? @relation(fields: [itemId], references: [id])
+  lenderId         String?
+  lender           Lender?          @relation(fields: [lenderId], references: [id])
+  openedById       String
+  openedBy         User             @relation("DisputeOpener", fields: [openedById], references: [id])
+  reason           String
+  description      String
+  disputedAmount   Int              @default(0)
+  status           DisputeStatus    @default(OPEN)
+  decision         String?
+  decidedById      String?
+  decidedAt        DateTime?
+  resolutionAmount Int?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  messages    DisputeMessage[]
+  attachments Attachment[]
+
+  @@index([status, createdAt])
+  @@index([lenderId, status])
+}
+
+model DisputeMessage {
+  id        String   @id @default(cuid())
+  disputeId String
+  dispute   Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  message   String
+  createdAt DateTime @default(now())
+
+  attachments Attachment[]
+}
+
+model Attachment {
+  id           String          @id @default(cuid())
+  disputeId    String?
+  dispute      Dispute?        @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  messageId    String?
+  message      DisputeMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  storageKey   String
+  fileName     String
+  mimeType     String
+  size         Int
+  uploadedById String
+  createdAt    DateTime        @default(now())
+}
+
+model Review {
+  id               String          @id @default(cuid())
+  itemId           String          @unique
+  item             ReservationItem @relation(fields: [itemId], references: [id])
+  clientId         String
+  client           User            @relation(fields: [clientId], references: [id])
+  lenderId         String
+  lender           Lender          @relation(fields: [lenderId], references: [id])
+  productId        String
+  product          Product         @relation(fields: [productId], references: [id])
+  productRating    Int
+  lenderRating     Int
+  experienceRating Int
+  comment          String?
+  status           ReviewStatus    @default(PUBLISHED)
+  lenderReply      String?
+  lenderRepliedAt  DateTime?
+  createdAt        DateTime        @default(now())
+
+  @@index([productId, status])
+  @@index([lenderId, status])
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  link      String?
+  channel   NotificationChannel @default(INTERNAL)
+  status    NotificationStatus  @default(SENT)
+  readAt    DateTime?
+  sentAt    DateTime?
+  data      Json?
+  createdAt DateTime            @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// MODIFICATION D'UNE RÉSERVATION CONFIRMÉE
+// ---------------------------------------------------------------------------
+
+model ModificationRequest {
+  id               String             @id @default(cuid())
+  reservationId    String
+  reservation      Reservation        @relation(fields: [reservationId], references: [id])
+  clientId         String
+  lenderId         String
+  lender           Lender             @relation(fields: [lenderId], references: [id])
+  status           ModificationStatus @default(PENDING_VALIDATION)
+  reason           String?
+  amountBefore     Int
+  amountAfter      Int
+  differenceToPay  Int                @default(0)
+  refundToIssue    Int                @default(0)
+  depositBefore    Int
+  depositAfter     Int
+  commissionBefore Int
+  commissionAfter  Int
+  requestedById    String
+  requestedBy      User               @relation("ModificationRequester", fields: [requestedById], references: [id])
+  validatedById    String?
+  respondBy        DateTime
+  escalatedAt      DateTime?
+  escalationNote   String?
+  rejectionReason  String?
+  requestedAt      DateTime           @default(now())
+  validatedAt      DateTime?
+  appliedAt        DateTime?
+  expiresAt        DateTime
+  paymentId        String?
+  refundId         String?
+
+  lines ModificationLine[]
+
+  @@index([reservationId, status])
+  @@index([status, respondBy])
+}
+
+model ModificationLine {
+  id                String              @id @default(cuid())
+  modificationId    String
+  modification      ModificationRequest @relation(fields: [modificationId], references: [id], onDelete: Cascade)
+  itemId            String?
+  item              ReservationItem?    @relation(fields: [itemId], references: [id])
+  productId         String
+  action            ModificationAction
+  quantityBefore    Int                 @default(0)
+  quantityRequested Int                 @default(0)
+  quantityApplied   Int?
+  startBefore       DateTime?           @db.Date
+  endBefore         DateTime?           @db.Date
+  startAfter        DateTime?           @db.Date
+  endAfter          DateTime?           @db.Date
+  unitPriceBefore   Int                 @default(0)
+  unitPriceAfter    Int                 @default(0)
+  subtotalBefore    Int                 @default(0)
+  subtotalAfter     Int                 @default(0)
+}
+
+// ---------------------------------------------------------------------------
+// ANNULATION, ABONNEMENTS, MISE EN AVANT, SCORES
+// ---------------------------------------------------------------------------
+
+model CancellationPolicy {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  rules CancellationRule[]
+}
+
+model CancellationRule {
+  id             String             @id @default(cuid())
+  policyId       String
+  policy         CancellationPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  minHoursBefore Int // délai minimum avant le début de la location
+  refundPercent  Int
+
+  @@index([policyId, minHoursBefore])
+}
+
+model Subscription {
+  id        String             @id @default(cuid())
+  lenderId  String
+  lender    Lender             @relation(fields: [lenderId], references: [id])
+  plan      SubscriptionPlan
+  status    SubscriptionStatus @default(ACTIVE)
+  price     Int
+  startsAt  DateTime
+  endsAt    DateTime?
+  createdAt DateTime           @default(now())
+
+  @@index([lenderId, status])
+}
+
+model Promotion {
+  id         String        @id @default(cuid())
+  productId  String
+  product    Product       @relation(fields: [productId], references: [id])
+  type       PromotionType
+  startsAt   DateTime
+  endsAt     DateTime
+  amountPaid Int           @default(0)
+  active     Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+
+  @@index([type, active, startsAt, endsAt])
+}
+
+model ClientScore {
+  id                    String   @id @default(cuid())
+  clientId              String   @unique
+  client                User     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  holdNonConversionRate Float    @default(0)
+  cancellationRate      Float    @default(0)
+  disputeRate           Float    @default(0)
+  score                 Float    @default(100)
+  computedAt            DateTime @default(now())
+}
+
+model LenderScore {
+  id               String   @id @default(cuid())
+  lenderId         String   @unique
+  lender           Lender   @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  rating           Float    @default(0)
+  cancellationRate Float    @default(0)
+  lateRate         Float    @default(0)
+  disputeRate      Float    @default(0)
+  responseRate     Float    @default(0)
+  score            Float    @default(100)
+  computedAt       DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// SYSTÈME
+// ---------------------------------------------------------------------------
+
+model Setting {
+  key         String   @id
+  value       Json
+  description String?
+  group       String   @default("general")
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  lenderId  String?
+  action    String
+  entity    String
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
+  @@index([lenderId, createdAt])
+  @@index([action, createdAt])
+}
