@@ -1371,3 +1371,23 @@ model AuditLog {
   @@index([lenderId, createdAt])
   @@index([action, createdAt])
 }
+
+// ---------------------------------------------------------------------------
+// CONTACT
+// ---------------------------------------------------------------------------
+
+model ContactMessage {
+  id        String    @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  userId    String?
+  handled   Boolean   @default(false)
+  handledAt DateTime?
+  handledBy String?
+  createdAt DateTime  @default(now())
+
+  @@index([handled, createdAt])
+}

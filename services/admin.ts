@@ -392,3 +392,33 @@ export async function notifyBroadcast(actor: Actor, userIds: string[], title: st
   need(actor, "ADMIN_NOTIFICATIONS");
   await notifyUsers(db, userIds, { type: "admin.message", title, body });
 }
+
+// ---------------------------------------------------------------------------
+// Politique d'annulation (paliers de remboursement configurables)
+// ---------------------------------------------------------------------------
+
+export const cancellationPolicyInput = z.object({
+  rules: z
+    .array(z.object({ minHoursBefore: z.number().int().min(0).max(24 * 365), refundPercent: z.number().int().min(0).max(100) }))
+    .max(12)
+    .refine((rules) => new Set(rules.map((r) => r.minHoursBefore)).size === rules.length, "Deux paliers ne peuvent pas avoir le même délai."),
+});
+
+export async function getCancellationPolicy(actor: Actor) {
+  need(actor, "ADMIN_SETTINGS");
+  const policy = await db.cancellationPolicy.findFirst({ where: { active: true }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }], include: { rules: { orderBy: { minHoursBefore: "desc" } } } });
+  return policy;
+}
+
+/** Remplace les paliers de la politique par défaut. N'affecte que les annulations futures : la règle appliquée est conservée dans l'historique de chaque remboursement. */
+export async function saveCancellationPolicy(actor: Actor, input: z.infer<typeof cancellationPolicyInput>) {
+  need(actor, "ADMIN_SETTINGS");
+  return transaction(async (tx) => {
+    let policy = await tx.cancellationPolicy.findFirst({ where: { active: true }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }], include: { rules: true } });
+    if (!policy) policy = await tx.cancellationPolicy.create({ data: { name: "Politique par défaut", isDefault: true }, include: { rules: true } });
+    await tx.cancellationRule.deleteMany({ where: { policyId: policy.id } });
+    if (input.rules.length) await tx.cancellationRule.createMany({ data: input.rules.map((r) => ({ policyId: policy.id, ...r })) });
+    await audit(tx, { userId: actor.userId, action: "cancellation_policy.update", entity: "CancellationPolicy", entityId: policy.id, oldValue: { rules: policy.rules.map((r) => ({ minHoursBefore: r.minHoursBefore, refundPercent: r.refundPercent })) }, newValue: { rules: input.rules }, meta: actor.meta });
+    return tx.cancellationPolicy.findUniqueOrThrow({ where: { id: policy.id }, include: { rules: { orderBy: { minHoursBefore: "desc" } } } });
+  });
+}

@@ -35,3 +35,17 @@ export function Notice({ tone = "info", title, children }: { tone?: "info" | "wa
     </div>
   );
 }
+
+/** Squelette des espaces connectés : titre, rangée d'indicateurs et tableau. */
+export function DashboardSkeleton() {
+  return (
+    <div role="status" aria-label="Chargement">
+      <Skeleton className="h-9 w-64" />
+      <Skeleton className="mt-3 h-5 w-full max-w-lg" />
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}
+      </div>
+      <Skeleton className="mt-8 h-72 w-full" />
+    </div>
+  );
+}

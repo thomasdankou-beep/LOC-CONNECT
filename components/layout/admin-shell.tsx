@@ -3,18 +3,19 @@ import { db } from "@/lib/db";
 import { can, type Actor } from "@/lib/auth/actor";
 import { DashboardShell } from "./dashboard-shell";
 import type { NavGroup } from "./sidebar-nav";
-import { ArrowCounterClockwise, Bank, Bell, CalendarCheck, ChartLineUp, ClipboardText, CreditCard, Gauge, GearSix, HandCoins, IdentificationCard, Key, MapPin, Package, Percent, Receipt, Scales, ShieldCheck, Siren, Stack, Star, Tag, Truck, Users, Wallet, ArrowsClockwise, Storefront } from "@/components/ui/icons";
+import { ArrowCounterClockwise, Bank, Bell, Envelope, CalendarCheck, ChartLineUp, ClipboardText, CreditCard, Gauge, GearSix, HandCoins, IdentificationCard, Key, MapPin, Package, Percent, Receipt, Scales, ShieldCheck, Siren, Stack, Star, Tag, Truck, Users, Wallet, ArrowsClockwise, Storefront } from "@/components/ui/icons";
 
 type Item = NavGroup["items"][number] & { perm?: string };
 
 /** Navigation de l'administration, filtrée par permission. Les pastilles signalent le travail en attente. */
 export async function AdminShell({ actor, children }: { actor: Actor; children: ReactNode }) {
-  const [pendingLenders, pendingProducts, escalations, openDisputes, validations] = await Promise.all([
+  const [pendingLenders, pendingProducts, escalations, openDisputes, validations, newMessages] = await Promise.all([
     can(actor, "ADMIN_LENDERS") ? db.lender.count({ where: { status: "PENDING" } }) : 0,
     can(actor, "ADMIN_PRODUCTS") ? db.product.count({ where: { status: "PENDING_REVIEW", deletedAt: null } }) : 0,
     can(actor, "ADMIN_MODIFICATIONS") ? db.modificationRequest.count({ where: { status: "PENDING_VALIDATION", escalatedAt: { not: null } } }) : 0,
     can(actor, "ADMIN_DISPUTES") ? db.dispute.count({ where: { status: { in: ["OPEN", "UNDER_REVIEW"] } } }) : 0,
     can(actor, "ADMIN_PAYOUTS") ? db.validationAction.count({ where: { status: "PENDING" } }) : 0,
+    can(actor, "ADMIN_NOTIFICATIONS") ? db.contactMessage.count({ where: { handled: false } }) : 0,
   ]);
   const groups: { title?: string; items: Item[] }[] = [
     { items: [{ href: "/admin", label: "Tableau de bord", icon: <Gauge size={20} />, exact: true, perm: "ADMIN_DASHBOARD" }] },
@@ -57,10 +58,12 @@ export async function AdminShell({ actor, children }: { actor: Actor; children: 
     {
       title: "Système",
       items: [
+        { href: "/admin/messages", label: "Messages de contact", icon: <Envelope size={20} />, perm: "ADMIN_NOTIFICATIONS", badge: newMessages },
         { href: "/admin/notifications", label: "Notifications", icon: <Bell size={20} />, perm: "ADMIN_NOTIFICATIONS" },
         { href: "/admin/audit", label: "Journal d'audit", icon: <ClipboardText size={20} />, perm: "ADMIN_AUDIT" },
         { href: "/admin/roles", label: "Rôles et accès", icon: <Key size={20} />, perm: "ADMIN_ROLES" },
         { href: "/admin/parametres", label: "Paramètres", icon: <GearSix size={20} />, perm: "ADMIN_SETTINGS" },
+        { href: "/admin/annulation", label: "Politique d'annulation", icon: <ArrowCounterClockwise size={20} />, perm: "ADMIN_SETTINGS" },
       ],
     },
   ];
