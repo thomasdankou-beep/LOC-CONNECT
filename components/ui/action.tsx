@@ -56,6 +56,7 @@ export type FormField = {
   defaultValue?: string | number;
   min?: number;
   max?: number;
+  step?: number | "any";
 };
 
 /** Bouton qui ouvre un formulaire (champs déclaratifs) puis envoie le JSON à l'API. */
@@ -98,7 +99,7 @@ export function FormAction({ endpoint, method = "POST", label, title, descriptio
                 ))}
               </Select>
             ) : (
-              <Input key={f.name} name={f.name} label={f.label} type={f.type ?? "text"} required={f.required} placeholder={f.placeholder} hint={f.hint} defaultValue={f.defaultValue} min={f.min} max={f.max} error={fieldError(f.name)} />
+              <Input key={f.name} name={f.name} label={f.label} type={f.type ?? "text"} required={f.required} placeholder={f.placeholder} hint={f.hint} defaultValue={f.defaultValue} min={f.min} max={f.max} step={f.step} error={fieldError(f.name)} />
             ),
           )}
           {error && !error.details?.length && (
