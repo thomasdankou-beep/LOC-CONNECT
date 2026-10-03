@@ -18,7 +18,7 @@ import { Bank, ClockCountdown, Scales } from "@/components/ui/icons";
 export const metadata: Metadata = { title: "Versements", robots: { index: false } };
 
 export default async function Page() {
-  const actor = await pageLender();
+  const actor = await pageLender(["PAYOUT_VIEW", "FINANCE_VIEW"]);
   const [balance, payouts, lender, pending, settings] = await Promise.all([
     lenderBalance(actor.lenderId),
     listLenderPayouts(actor.lenderId),

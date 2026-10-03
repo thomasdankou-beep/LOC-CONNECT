@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "Mon entreprise", robots: { index: fa
 const OWNER_ONLY = new Set(["TEAM_MANAGE", "AUDIT_VIEW"]);
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ tab?: string; page?: string; action?: string; from?: string; to?: string }> }) {
-  const actor = await pageLender();
+  const actor = await pageLender(["COMPANY_MANAGE", "TEAM_MANAGE", "AUDIT_VIEW"]);
   const sp = await searchParams;
   const canCompany = can(actor, "COMPANY_MANAGE");
   const canTeam = can(actor, "TEAM_MANAGE");

@@ -15,10 +15,11 @@ export async function pageClient(next?: string): Promise<Actor> {
   return actor;
 }
 
-export async function pageLender(permission?: string): Promise<Actor & { lenderId: string }> {
+/** `permission` : une permission, ou une liste dont une seule suffit (même logique que la navigation de l'espace). */
+export async function pageLender(permission?: string | string[]): Promise<Actor & { lenderId: string }> {
   const actor = await pageActor("/loueur/dashboard");
   if (actor.accountType !== "LENDER" || !actor.lenderId) redirect("/");
-  if (permission && !can(actor, permission)) redirect("/loueur/dashboard?denied=1");
+  if (permission && ![permission].flat().some((p) => can(actor, p))) redirect("/loueur/dashboard?denied=1");
   return actor as Actor & { lenderId: string };
 }
 

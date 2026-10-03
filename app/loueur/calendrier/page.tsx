@@ -28,7 +28,7 @@ const monthKey = (d: Date) => d.toISOString().slice(0, 7);
 const shiftMonth = (d: Date, n: number) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1));
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
-  const actor = await pageLender();
+  const actor = await pageLender(["CALENDAR_MANAGE", "ORDER_VIEW"]);
   const sp = await searchParams;
   const first = parseMonth(sp.m);
   const next = shiftMonth(first, 1);
