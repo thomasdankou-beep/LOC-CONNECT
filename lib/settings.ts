@@ -47,7 +47,11 @@ export const SETTING_DEFS = {
 export type SettingKey = keyof typeof SETTING_DEFS;
 export type Settings = { [K in SettingKey]: (typeof SETTING_DEFS)[K]["default"] extends boolean ? boolean : (typeof SETTING_DEFS)[K]["default"] extends number ? number : string };
 
-let cache: { at: number; values: Settings } | null = null;
+/**
+ * Cache partagé via globalThis : Next.js compile les routes API et les pages dans des bundles distincts, chacun avec sa propre
+ * copie du module. Un cache local au module ne serait pas invalidé par une modification faite depuis une autre route.
+ */
+const shared = globalThis as unknown as { __lcSettingsCache?: { at: number; values: Settings } | null };
 const TTL_MS = 10_000;
 
 function defaults(): Settings {
@@ -57,10 +61,11 @@ function defaults(): Settings {
 }
 
 export function invalidateSettings(): void {
-  cache = null;
+  shared.__lcSettingsCache = null;
 }
 
 export async function getSettings(client: DbOrTx = db): Promise<Settings> {
+  const cache = shared.__lcSettingsCache;
   if (client === db && cache && Date.now() - cache.at < TTL_MS) return cache.values;
   const rows = await client.setting.findMany();
   const values = defaults() as unknown as Record<string, unknown>;
@@ -69,7 +74,7 @@ export async function getSettings(client: DbOrTx = db): Promise<Settings> {
     if (def && typeof row.value === typeof def.default) values[row.key] = row.value;
   }
   const typed = values as unknown as Settings;
-  if (client === db) cache = { at: Date.now(), values: typed };
+  if (client === db) shared.__lcSettingsCache = { at: Date.now(), values: typed };
   return typed;
 }
 

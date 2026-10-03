@@ -5,7 +5,9 @@ import { AppError } from "./errors";
  * Adapté à un seul processus : pour plusieurs instances, remplacer `store` par Redis (même interface).
  */
 type Bucket = number[];
-const store = new Map<string, Bucket>();
+// Partagé via globalThis : les bundles de routes Next.js ont chacun leur copie du module.
+const shared = globalThis as unknown as { __lcRateStore?: Map<string, Bucket> };
+const store = (shared.__lcRateStore ??= new Map<string, Bucket>());
 let lastSweep = Date.now();
 
 function sweep(now: number) {
