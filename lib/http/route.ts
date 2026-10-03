@@ -90,7 +90,7 @@ export function route<P = Record<string, string>>(handler: (ctx: Ctx<P>) => Prom
       const params = (await routeCtx?.params) ?? ({} as P);
       const res = await handler({ req, params, requestId, ip });
       res.headers.set("x-request-id", requestId);
-      res.headers.set("Cache-Control", "no-store");
+      if (!res.headers.has("Cache-Control")) res.headers.set("Cache-Control", "no-store");
       return res;
     } catch (err) {
       const res = errorResponse(err, requestId);
