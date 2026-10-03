@@ -99,7 +99,7 @@ export async function listLenderDeliveries(lenderId: string, opts: { status?: De
   const where: Prisma.DeliveryWhereInput = { lenderId, ...(opts.status ? { status: opts.status } : {}), reservation: { status: { notIn: ["HOLD", "PENDING_PAYMENT", "DRAFT", "CANCELLED", "REFUNDED"] } } };
   const [total, rows] = await Promise.all([
     db.delivery.count({ where }),
-    db.delivery.findMany({ where, include: { reservation: { select: { reference: true, id: true, client: { select: { firstName: true, lastName: true, phone: true } }, items: { where: { lenderId }, select: { productName: true, quantity: true } } } }, proofs: true }, orderBy: [{ scheduledDate: "asc" }], skip: (page - 1) * pageSize, take: pageSize }),
+    db.delivery.findMany({ where, include: { reservation: { select: { reference: true, id: true, client: { select: { firstName: true, lastName: true, phone: true } }, items: { where: { lenderId }, select: { productName: true, quantity: true, status: true } } } }, proofs: true }, orderBy: [{ scheduledDate: "asc" }], skip: (page - 1) * pageSize, take: pageSize }),
   ]);
   return { rows, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
 }

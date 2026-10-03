@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { cn } from "@/lib/cn";
+import { formatFcfa } from "@/lib/money";
 
 export type Series = { key: string; label: string };
 export type BarDatum = { label: string; values: Record<string, number> };
@@ -12,7 +13,9 @@ export type BarDatum = { label: string; values: Record<string, number> };
  * Une série : pas de légende. Plusieurs séries : légende toujours présente. Valeurs au survol et au focus clavier,
  * et vue tableau pour ne rien réserver à la souris.
  */
-export function BarChart({ data, series, format, height = 220, ariaLabel }: { data: BarDatum[]; series: Series[]; format: (n: number) => string; height?: number; ariaLabel: string }) {
+/** `unit` est une chaîne (et non une fonction) pour pouvoir être fourni par un composant serveur. */
+export function BarChart({ data, series, unit = "number", height = 220, ariaLabel }: { data: BarDatum[]; series: Series[]; unit?: "fcfa" | "number"; height?: number; ariaLabel: string }) {
+  const format = (n: number) => (unit === "fcfa" ? formatFcfa(n) : new Intl.NumberFormat("fr-FR").format(n));
   const id = useId();
   const [active, setActive] = useState<number | null>(null);
   const width = 640;

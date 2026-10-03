@@ -1,4 +1,5 @@
 import type {
+  BalanceEntryKind,
   DeliveryStatus,
   DepositStatus,
   DisputeStatus,
@@ -158,3 +159,21 @@ export const RETURN_CONDITION: Record<ReturnCondition, string> = {
 };
 
 export const FULFILLMENT: Record<FulfillmentType, string> = { PICKUP: "Retrait chez le loueur", DELIVERY: "Livraison" };
+
+export const BALANCE_KIND: Record<BalanceEntryKind, string> = {
+  SALE: "Location (part nette)",
+  DELIVERY_FEE: "Frais de livraison",
+  DEPOSIT_CAPTURE: "Retenue sur caution",
+  REFUND_DEDUCTION: "Remboursement client à compenser",
+  RECOVERY_OFFSET: "Compensation de recouvrement",
+  MANUAL_RECOVERY: "Recouvrement manuel",
+  PAYOUT_ADJUSTMENT: "Ajustement de versement",
+};
+
+export const PAYOUT_METHOD: Record<string, string> = {
+  BANK_TRANSFER: "Virement bancaire",
+  ORANGE_MONEY: "Orange Money",
+  MTN_MONEY: "MTN Money",
+  MOOV_MONEY: "Moov Money",
+  WAVE: "Wave",
+};

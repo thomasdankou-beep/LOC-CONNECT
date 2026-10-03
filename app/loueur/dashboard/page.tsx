@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { getSettings } from "@/lib/settings";
 import { can } from "@/lib/auth/actor";
 import { pageLender } from "@/lib/auth/page";
 import { addDays, formatDate, todayUTC } from "@/lib/dates";
@@ -24,6 +25,7 @@ export default async function LenderDashboard({ searchParams }: { searchParams: 
   const lenderId = actor.lenderId;
   const today = todayUTC();
   const showFinance = can(actor, "FINANCE_VIEW");
+  const freezeHours = (await getSettings())["payout.freeze_hours"];
 
   const [balance, revenue, upcoming, toValidate, toReturn, deliveriesToday, mods, openDisputes, products, deposits, stock] = await Promise.all([
     showFinance ? lenderBalance(lenderId) : null,
@@ -75,7 +77,7 @@ export default async function LenderDashboard({ searchParams }: { searchParams: 
           <Card>
             <CardHeader title="Revenus des 6 derniers mois" description="Part nette du loueur et commission LOC'CONNECT" action={<ChartLineUp size={20} className="text-royal-ink" />} />
             <div className="p-5">
-              {chart.length === 0 ? <p className="py-10 text-center text-sm text-muted">Pas encore de revenus.</p> : <BarChart data={chart} series={[{ key: "net", label: "Part loueur" }, { key: "commission", label: "Commission" }]} format={formatFcfa} ariaLabel="Revenus mensuels du loueur : part nette et commission" />}
+              {chart.length === 0 ? <p className="py-10 text-center text-sm text-muted">Pas encore de revenus.</p> : <BarChart data={chart} series={[{ key: "net", label: "Part loueur" }, { key: "commission", label: "Commission" }]} unit="fcfa" ariaLabel="Revenus mensuels du loueur : part nette et commission" />}
             </div>
           </Card>
         )}
@@ -103,7 +105,7 @@ export default async function LenderDashboard({ searchParams }: { searchParams: 
 
       {balance && (
         <Card className="mt-6">
-          <CardHeader title="Où en est mon argent ?" description={`Versement ${72} h après la fin de location, sauf litige`} action={<ClockCountdown size={20} className="text-royal-ink" />} />
+          <CardHeader title="Où en est mon argent ?" description={`Versement ${freezeHours} h après la fin de location, sauf litige`} action={<ClockCountdown size={20} className="text-royal-ink" />} />
           <dl className="grid gap-px bg-line sm:grid-cols-2 xl:grid-cols-4">
             {[
               { l: "Gelé", v: balance.frozen, d: "Fin de location + délai de gel pas encore atteint" },

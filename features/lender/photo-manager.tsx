@@ -1,11 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAction } from "@/hooks/use-action";
 import { Photo } from "@/components/ui/photo";
 import { Trash, UploadSimple } from "@/components/ui/icons";
 
 export function PhotoManager({ productId, photos }: { productId: string; photos: { id: string; url: string }[] }) {
+  const router = useRouter();
   const { run, pending } = useAction();
   const [busy, setBusy] = useState(false);
 
@@ -18,7 +20,7 @@ export function PhotoManager({ productId, photos }: { productId: string; photos:
       await run(`/api/products/${productId}/photos`, { form }, { refresh: false });
     }
     setBusy(false);
-    await run(`/api/products/${productId}/photos?probe=1`, { method: "DELETE" }, { silentError: true, refresh: true }).catch(() => undefined);
+    router.refresh();
   }
 
   return (
