@@ -1,4 +1,5 @@
 import type { Payment, ReturnCondition } from "@prisma/client";
+import { formatFcfa } from "@/lib/money";
 import { z } from "zod";
 import { db, lockProducts, transaction, type Tx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
@@ -101,7 +102,7 @@ export async function createReturnReport(actor: Actor & { lenderId: string }, it
       await notifyUsers(tx, [item.reservation.clientId], {
         type: "return.reported",
         title: `Constat de retour : ${item.productName}`,
-        body: `Le loueur signale des dommages (${amounts.totalDamage} FCFA). Vous pouvez accepter ou contester avant le ${addHours(now, settings["return.contest_window_hours"]).toLocaleDateString("fr-FR")}.`,
+        body: `Le loueur signale des dommages (${formatFcfa(amounts.totalDamage)}). Vous pouvez accepter ou contester avant le ${addHours(now, settings["return.contest_window_hours"]).toLocaleDateString("fr-FR")}.`,
         link: `/mes-reservations/${item.reservationId}`,
       });
     }
@@ -141,7 +142,7 @@ export async function settleReport(tx: Tx, reportId: string, opts: { actorId?: s
   }
   if (extra > 0) {
     await tx.extraCharge.create({ data: { itemId: item.id, reportId, amount: extra, reason: `Dommages au-delà de la caution (${item.productName})` } });
-    await notifyUsers(tx, [item.reservation.clientId], { type: "extra_charge.created", title: "Complément à régler", body: `Un complément de ${extra} FCFA est dû pour ${item.productName}.`, link: `/mes-reservations/${item.reservationId}` });
+    await notifyUsers(tx, [item.reservation.clientId], { type: "extra_charge.created", title: "Complément à régler", body: `Un complément de ${formatFcfa(extra)} est dû pour ${item.productName}.`, link: `/mes-reservations/${item.reservationId}` });
   }
   if (report.lostQuantity > 0) {
     await lockProducts(tx, [item.productId]);
@@ -158,10 +159,10 @@ export async function settleReport(tx: Tx, reportId: string, opts: { actorId?: s
   await notifyUsers(tx, [item.reservation.clientId], {
     type: "deposit.settled",
     title: `Caution ${withheld > 0 ? "retenue en partie" : "libérée"} : ${item.productName}`,
-    body: withheld > 0 ? `${withheld} FCFA retenus, ${released} FCFA restitués.` : `${released} FCFA restitués.`,
+    body: withheld > 0 ? `${formatFcfa(withheld)} retenus, ${formatFcfa(released)} restitués.` : `${formatFcfa(released)} restitués.`,
     link: `/mes-reservations/${item.reservationId}`,
   });
-  await notifyLender(tx, item.lenderId, { type: "deposit.settled", title: `Caution réglée : ${item.productName}`, body: withheld > 0 ? `${withheld} FCFA vous sont crédités.` : "Aucune retenue.", link: `/loueur/cautions` }, "DEPOSIT_VIEW");
+  await notifyLender(tx, item.lenderId, { type: "deposit.settled", title: `Caution réglée : ${item.productName}`, body: withheld > 0 ? `${formatFcfa(withheld)} vous sont crédités.` : "Aucune retenue.", link: `/loueur/cautions` }, "DEPOSIT_VIEW");
   await audit(tx, { userId: opts.actorId, lenderId: item.lenderId, action: "deposit.settle", entity: "Deposit", entityId: deposit.id, oldValue: { amount: deposit.amount }, newValue: { withheld, released, extra } });
   return report;
 }
@@ -256,7 +257,7 @@ export async function onExtraChargePaid(tx: Tx, payment: Payment) {
     await tx.extraCharge.update({ where: { id: charge.id }, data: { status: "PAID" } });
     await recordTransaction(tx, { type: "EXTRA_CHARGE", direction: "INTERNAL", amount: charge.amount, paymentId: payment.id, reservationId: charge.item.reservationId, itemId: charge.itemId, lenderId: charge.item.lenderId });
     await addBalanceEntry(tx, { lenderId: charge.item.lenderId, kind: "DEPOSIT_CAPTURE", amount: charge.amount, availableAt: new Date(), reservationId: charge.item.reservationId, itemId: charge.itemId, note: "Complément de dommages" });
-    await notifyLender(tx, charge.item.lenderId, { type: "extra_charge.paid", title: "Complément de dommages payé", body: `${charge.amount} FCFA crédités pour ${charge.item.productName}.`, link: "/loueur/cautions" }, "DEPOSIT_VIEW");
+    await notifyLender(tx, charge.item.lenderId, { type: "extra_charge.paid", title: "Complément de dommages payé", body: `${formatFcfa(charge.amount)} crédités pour ${charge.item.productName}.`, link: "/loueur/cautions" }, "DEPOSIT_VIEW");
   }
   await notifyUsers(tx, [payment.userId], { type: "payment.succeeded", title: "Complément réglé", body: `Votre paiement ${payment.reference} a été reçu.`, link: `/mes-reservations/${payment.reservationId}` });
   return { status: "PAID" as const };

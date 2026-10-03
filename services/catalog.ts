@@ -156,13 +156,18 @@ export async function featuredProducts(take = 4): Promise<ProductCard[]> {
   return rows.map((r) => ({ ...r, featured: true }));
 }
 
+/** Catégories racines avec leurs sous-catégories ; `_count.products` agrège les produits publiés de la racine et de ses sous-catégories. */
 export async function listCategoryTree() {
-  const roots = await db.category.findMany({
-    where: { parentId: null, active: true },
-    include: { children: { where: { active: true }, orderBy: { position: "asc" } }, _count: { select: { products: { where: { status: "PUBLISHED", deletedAt: null } } } } },
-    orderBy: { position: "asc" },
-  });
-  return roots;
+  const [roots, counts] = await Promise.all([
+    db.category.findMany({ where: { parentId: null, active: true }, include: { children: { where: { active: true }, orderBy: { position: "asc" } } }, orderBy: { position: "asc" } }),
+    db.product.groupBy({ by: ["categoryId"], where: { status: "PUBLISHED", deletedAt: null, lender: { status: "APPROVED" } }, _count: true }),
+  ]);
+  const byId = new Map(counts.map((c) => [c.categoryId, c._count]));
+  return roots.map((r) => ({
+    ...r,
+    children: r.children.map((c) => ({ ...c, productCount: byId.get(c.id) ?? 0 })),
+    _count: { products: (byId.get(r.id) ?? 0) + r.children.reduce((a, c) => a + (byId.get(c.id) ?? 0), 0) },
+  }));
 }
 
 export async function listCities() {

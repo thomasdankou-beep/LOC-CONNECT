@@ -4,7 +4,7 @@ import { db, transaction } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { reference } from "@/lib/ids";
-import { sum } from "@/lib/money";
+import { sum, formatFcfa } from "@/lib/money";
 import { can, type Actor } from "@/lib/auth/actor";
 import { recordTransaction } from "./finance";
 import { notifyLender } from "./notifications";
@@ -91,7 +91,7 @@ export async function runPayout(actor: Actor, lenderId: string) {
     }
     await recordTransaction(tx, { type: "PAYOUT", direction: "OUT", amount: total, lenderId, payoutId: payout.id, createdById: actor.userId, metadata: { entries: entries.length, offset: sum(entries.filter((e) => e.amount < 0).map((e) => -e.amount)) } });
     await audit(tx, { userId: actor.userId, lenderId, action: "payout.run", entity: "Payout", entityId: payout.id, newValue: { amount: total, reference: payout.reference }, meta: actor.meta });
-    await notifyLender(tx, lenderId, { type: "payout.paid", title: `Versement ${payout.reference}`, body: `${total} FCFA ont été versés sur votre compte (versement simulé).`, link: "/loueur/versements" }, "PAYOUT_VIEW");
+    await notifyLender(tx, lenderId, { type: "payout.paid", title: `Versement ${payout.reference}`, body: `${formatFcfa(total)} ont été versés sur votre compte (versement simulé).`, link: "/loueur/versements" }, "PAYOUT_VIEW");
     return payout;
   });
 }
@@ -143,7 +143,7 @@ export async function markRecovered(actor: Actor, reimbursementId: string, note?
     await recordTransaction(tx, { type: "RECOVERY", direction: "IN", amount: r.impactedAmount, lenderId: r.lenderId, refundId: r.refundId, createdById: actor.userId, metadata: { reimbursementId } });
     const updated = await tx.lenderReimbursement.update({ where: { id: r.id }, data: { status: "RECOVERED", recoveredAt: new Date(), note: note ?? r.note } });
     await audit(tx, { userId: actor.userId, lenderId: r.lenderId, action: "recovery.recovered", entity: "LenderReimbursement", entityId: r.id, newValue: { amount: r.impactedAmount, note }, meta: actor.meta });
-    await notifyLender(tx, r.lenderId, { type: "recovery.closed", title: "Recouvrement clôturé", body: `${r.impactedAmount} FCFA ont été enregistrés comme recouvrés.`, link: "/loueur/versements" }, "PAYOUT_VIEW");
+    await notifyLender(tx, r.lenderId, { type: "recovery.closed", title: "Recouvrement clôturé", body: `${formatFcfa(r.impactedAmount)} ont été enregistrés comme recouvrés.`, link: "/loueur/versements" }, "PAYOUT_VIEW");
     return updated;
   });
 }

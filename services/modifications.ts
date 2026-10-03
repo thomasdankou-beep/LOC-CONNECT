@@ -4,7 +4,7 @@ import { db, lockReservation, transaction, type Tx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { addHours, daysBetween, hoursUntil, parseDate } from "@/lib/dates";
-import { applyBps, sum } from "@/lib/money";
+import { applyBps, sum, formatFcfa } from "@/lib/money";
 import { getSettings, type Settings } from "@/lib/settings";
 import { can, type Actor } from "@/lib/auth/actor";
 import { assertAvailable, validateRentalPeriod } from "./availability";
@@ -281,7 +281,7 @@ export async function approveModification(actor: Actor, reservationId: string, m
 
     if (mod.differenceToPay > 0) {
       await tx.modificationRequest.update({ where: { id: mod.id }, data: { status: "PENDING_PAYMENT" } });
-      await notifyUsers(tx, [mod.clientId], { type: "modification.accepted", title: `Modification acceptée : ${pre.reservation.reference}`, body: `Réglez le complément de ${mod.differenceToPay} FCFA pour l'appliquer.`, link: `/mes-reservations/${reservationId}` });
+      await notifyUsers(tx, [mod.clientId], { type: "modification.accepted", title: `Modification acceptée : ${pre.reservation.reference}`, body: `Réglez le complément de ${formatFcfa(mod.differenceToPay)} pour l'appliquer.`, link: `/mes-reservations/${reservationId}` });
       return tx.modificationRequest.findUniqueOrThrow({ where: { id: mod.id }, include: { lines: true } });
     }
     const applied = await applyModificationTx(tx, mod.id, actor.userId);
@@ -504,7 +504,7 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
 
   const result = await tx.modificationRequest.update({ where: { id: mod.id }, data: { status: "APPLIED", appliedAt: now }, include: { lines: true } });
   await audit(tx, { userId: actorId, lenderId: mod.lenderId, action: "modification.apply", entity: "ModificationRequest", entityId: mod.id, oldValue: { total: fresh.total }, newValue: { total: updated.total, version } });
-  await notifyUsers(tx, [mod.clientId], { type: "modification.applied", title: `Réservation ${reservation.reference} modifiée`, body: mod.refundToIssue > 0 ? `${mod.refundToIssue} FCFA vous sont remboursés.` : "Votre réservation a été mise à jour.", link: `/mes-reservations/${reservation.id}` });
+  await notifyUsers(tx, [mod.clientId], { type: "modification.applied", title: `Réservation ${reservation.reference} modifiée`, body: mod.refundToIssue > 0 ? `${formatFcfa(mod.refundToIssue)} vous sont remboursés.` : "Votre réservation a été mise à jour.", link: `/mes-reservations/${reservation.id}` });
   await notifyLender(tx, mod.lenderId, { type: "modification.applied", title: `Réservation ${reservation.reference} modifiée`, body: "Une modification a été appliquée.", link: `/loueur/reservations/${reservation.id}` }, "ORDER_VIEW");
   return result;
 }

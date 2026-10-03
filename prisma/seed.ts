@@ -6,6 +6,7 @@ import { hashPassword } from "../lib/auth/password";
 import { loadActor, type Actor } from "../lib/auth/actor";
 import { addDays, parseDate, toISODate, todayUTC } from "../lib/dates";
 import { slugify } from "../lib/ids";
+import { CATEGORY_PHOTO, COVER_PHOTOS, SUBCATEGORY_PHOTOS, unsplash } from "../lib/images";
 import { seedSystemData } from "./system";
 import { CATEGORIES, CITIES, CLIENTS, LENDERS, REVIEW_COMMENTS } from "./seed-data";
 import { addToCart } from "../services/cart";
@@ -23,10 +24,13 @@ import { runMaintenance } from "../services/maintenance";
 import { updateDelivery } from "../services/deliveries";
 import { computeClientScore, computeLenderScore } from "../services/scores";
 import { createPromotion } from "../services/admin";
+import { storage } from "../lib/storage";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 const PASSWORD = env().SEED_DEMO_PASSWORD;
 const EMAIL_DOMAIN = "demo-locconnect.ci";
-const photo = (seed: string, n: number) => `https://picsum.photos/seed/${seed}-${n}/1200/900`;
+const picsum = (seed: string, n: number) => `https://picsum.photos/seed/${seed}-${n}/1200/900`;
 const pad = (n: number) => String(n).padStart(2, "0");
 
 const TABLES = [
@@ -83,18 +87,19 @@ async function main() {
   console.log("Réinitialisation de la base…");
   await db.$executeRawUnsafe(`TRUNCATE ${TABLES.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`);
   await seedSystemData(db);
+  await storage().put("private/seed/preuve-retour.jpg", readFileSync(path.join(__dirname, "assets/preuve-retour.jpg")), "image/jpeg");
   const passwordHash = await hashPassword(PASSWORD);
 
   // --- Villes et catégories ------------------------------------------------
   const cityIds = new Map<string, string>();
   for (const c of CITIES) {
-    const city = await db.city.create({ data: { slug: slugify(c.name), name: c.name, region: c.region, imageUrl: photo(`ville-${slugify(c.name)}`, 1) } });
+    const city = await db.city.create({ data: { slug: slugify(c.name), name: c.name, region: c.region, imageUrl: picsum(`ville-${slugify(c.name)}`, 1) } });
     cityIds.set(c.name, city.id);
   }
   const categoryIds = new Map<string, string>();
   let position = 0;
   for (const c of CATEGORIES) {
-    const root = await db.category.create({ data: { slug: slugify(c.name), name: c.name, icon: c.icon, description: c.description, position: position++, imageUrl: photo(`categorie-${slugify(c.name)}`, 1) } });
+    const root = await db.category.create({ data: { slug: slugify(c.name), name: c.name, icon: c.icon, description: c.description, position: position++, imageUrl: CATEGORY_PHOTO[c.name] ? unsplash(CATEGORY_PHOTO[c.name]) : null } });
     categoryIds.set(c.name, root.id);
     let childPos = 0;
     for (const child of c.children) {
@@ -151,8 +156,8 @@ async function main() {
         cityId: cityIds.get(l.city)!,
         status: approved ? "APPROVED" : "PENDING",
         validatedAt: approved ? addDays(new Date(), -120 + i * 3) : null,
-        logoUrl: photo(`logo-${slugify(l.company)}`, 1),
-        coverUrl: photo(`couverture-${slugify(l.company)}`, 1),
+        logoUrl: null,
+        coverUrl: unsplash(COVER_PHOTOS[i % COVER_PHOTOS.length], 1600, 700),
         offersDelivery: l.offersDelivery ?? true,
         deliveryFeeLocal: l.deliveryLocal,
         deliveryFeeRemote: l.deliveryRemote,
@@ -183,7 +188,7 @@ async function main() {
           categoryId: categoryIds.get(sub)!,
           cityId: cityIds.get(l.city)!,
           popularity: Math.floor(rnd() * 90) + 10,
-          photos: { create: [1, 2, 3].map((n, position) => ({ url: photo(slug, n), alt: `${name}, photo ${n}`, position })) },
+          photos: { create: (SUBCATEGORY_PHOTOS[sub] ?? SUBCATEGORY_PHOTOS["Tables"]).map((id, position) => ({ url: unsplash(id), alt: `${name}, photo ${position + 1}`, position })) },
         },
       });
       await db.stockMovement.create({ data: { productId: product.id, delta: stock, previousQty: 0, newQty: stock, reason: "INITIAL" } });

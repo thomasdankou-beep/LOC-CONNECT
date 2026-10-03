@@ -8,6 +8,7 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  devIndicators: false,
   poweredByHeader: false,
   images: {
     remotePatterns: [

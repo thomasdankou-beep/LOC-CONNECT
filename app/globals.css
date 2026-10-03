@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+/*
+ * Système de design LOC'CONNECT.
+ * Une seule couleur d'accent (bleu royal) sur des neutres bleu marine. Un seul système d'arrondis :
+ *  - cartes et panneaux : 16 px (rounded-card)
+ *  - champs et boutons : 10 px (rounded-control)
+ *  - pastilles, badges et filtres : arrondi complet (rounded-full)
+ * Thème clair par défaut, thème sombre automatique (prefers-color-scheme) avec ses propres valeurs.
+ */
+:root {
+  color-scheme: light;
+  --lc-canvas: #f3f6fc;
+  --lc-surface: #ffffff;
+  --lc-surface-2: #eaeff9;
+  --lc-ink: #0c1a3d;
+  --lc-muted: #526083;
+  --lc-line: #d9e0ef;
+  --lc-navy: #0d1f4e;
+  --lc-navy-2: #15296a;
+  --lc-royal: #1f4fd6;
+  --lc-royal-strong: #173fb0;
+  --lc-royal-soft: #e6edff;
+  --lc-royal-ink: #1a43b8;
+  --lc-success: #0f7a47;
+  --lc-success-soft: #e1f4ea;
+  --lc-warn: #9a5700;
+  --lc-warn-soft: #fcefd8;
+  --lc-danger: #b3261e;
+  --lc-danger-soft: #fce6e3;
+  --lc-shadow: 0 1px 2px rgba(13, 31, 78, 0.06), 0 10px 28px -14px rgba(13, 31, 78, 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --lc-canvas: #0a1122;
+    --lc-surface: #111a31;
+    --lc-surface-2: #172240;
+    --lc-ink: #e9eefb;
+    --lc-muted: #9eacc9;
+    --lc-line: #26335a;
+    --lc-navy: #08142e;
+    --lc-navy-2: #0f2150;
+    --lc-royal: #3a67ea;
+    --lc-royal-strong: #5b82f2;
+    --lc-royal-soft: #17265a;
+    --lc-royal-ink: #8fadff;
+    --lc-success: #5fd197;
+    --lc-success-soft: #0f2b21;
+    --lc-warn: #f0b45a;
+    --lc-warn-soft: #33250c;
+    --lc-danger: #ff8a80;
+    --lc-danger-soft: #35150f;
+    --lc-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -14px rgba(0, 0, 0, 0.6);
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--lc-canvas);
+  --color-surface: var(--lc-surface);
+  --color-surface-2: var(--lc-surface-2);
+  --color-ink: var(--lc-ink);
+  --color-muted: var(--lc-muted);
+  --color-line: var(--lc-line);
+  --color-navy: var(--lc-navy);
+  --color-navy-2: var(--lc-navy-2);
+  --color-royal: var(--lc-royal);
+  --color-royal-strong: var(--lc-royal-strong);
+  --color-royal-soft: var(--lc-royal-soft);
+  --color-royal-ink: var(--lc-royal-ink);
+  --color-success: var(--lc-success);
+  --color-success-soft: var(--lc-success-soft);
+  --color-warn: var(--lc-warn);
+  --color-warn-soft: var(--lc-warn-soft);
+  --color-danger: var(--lc-danger);
+  --color-danger-soft: var(--lc-danger-soft);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --radius-card: 1rem;
+  --radius-control: 0.625rem;
+  --shadow-card: var(--lc-shadow);
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--lc-canvas);
+  color: var(--lc-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+p { text-wrap: pretty; }
+
+:focus-visible {
+  outline: 2px solid var(--lc-royal);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--lc-royal); color: #fff; }
+
+/* Squelettes de chargement : même forme que le contenu final. */
+@keyframes lc-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--lc-surface-2) 25%, color-mix(in srgb, var(--lc-surface-2) 60%, var(--lc-surface)) 50%, var(--lc-surface-2) 75%);
+  background-size: 200% 100%;
+  animation: lc-shimmer 1.6s linear infinite;
+  border-radius: var(--radius-control);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Texte lisible par-dessus une photo. */
+.scrim-navy {
+  background: linear-gradient(180deg, rgba(8, 20, 46, 0.1) 0%, rgba(8, 20, 46, 0.55) 55%, rgba(8, 20, 46, 0.88) 100%);
+}
+
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+
+@media print {
+  header, footer, nav, .no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+}

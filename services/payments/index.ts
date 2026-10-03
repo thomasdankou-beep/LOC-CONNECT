@@ -6,7 +6,7 @@ import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { reference } from "@/lib/ids";
 import { addMinutes, addDays } from "@/lib/dates";
-import { applyBps, sum } from "@/lib/money";
+import { applyBps, sum, formatFcfa } from "@/lib/money";
 import { getSettings } from "@/lib/settings";
 import { can, type Actor } from "@/lib/auth/actor";
 import { assertAvailable } from "../availability";
@@ -240,7 +240,7 @@ async function settleInitialPayment(tx: Tx, payment: Payment) {
     await tx.cartItem.deleteMany({ where: { cart: { userId: payment.userId }, productId: h.productId, startDate: h.startDate, endDate: h.endDate } });
   }
 
-  await notifyUsers(tx, [payment.userId], { type: "payment.succeeded", title: `Paiement confirmé, réservation ${reservation.reference}`, body: `Votre paiement de ${payment.amount} FCFA a bien été reçu${payment.provider === "simulated" ? " (paiement simulé)" : ""}.`, link: `/mes-reservations/${reservation.id}` });
+  await notifyUsers(tx, [payment.userId], { type: "payment.succeeded", title: `Paiement confirmé, réservation ${reservation.reference}`, body: `Votre paiement de ${formatFcfa(payment.amount)} a bien été reçu${payment.provider === "simulated" ? " (paiement simulé)" : ""}.`, link: `/mes-reservations/${reservation.id}` });
   await notifyLendersOfNewReservation(tx, reservation.id);
   await audit(tx, { userId: payment.userId, action: "payment.confirmed", entity: "Payment", entityId: payment.id, newValue: { amount: payment.amount, reservation: reservation.reference } });
   return { status: "PAID" as const };

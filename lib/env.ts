@@ -21,6 +21,7 @@ const schema = z.object({
   MAIL_FROM: z.string().default("LOC'CONNECT <no-reply@locconnect.example>"),
   CRON_SECRET: z.string().min(8).default("change-me-cron"),
   SEED_DEMO_PASSWORD: z.string().default("Demo2026!Loc"),
+  DEMO_MODE: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

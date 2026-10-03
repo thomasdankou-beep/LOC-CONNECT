@@ -4,7 +4,7 @@ import { db, lockReservation, transaction, type DbOrTx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { hoursUntil } from "@/lib/dates";
-import { prorate, sum } from "@/lib/money";
+import { prorate, sum, formatFcfa } from "@/lib/money";
 import { getSettings, type Settings } from "@/lib/settings";
 import { CANCELLABLE_STATUSES } from "@/lib/state-machine";
 import { can, type Actor } from "@/lib/auth/actor";
@@ -170,7 +170,7 @@ export async function cancelReservation(actor: Actor, reservationId: string, inp
     }
 
     await audit(tx, { userId: actor.userId, lenderId: isLender ? actor.lenderId : null, action: "reservation.cancel", entity: "Reservation", entityId: reservationId, newValue: { reason: input.reason, plan: { client: plan.clientTotal, rental: plan.rentalTotal, deposit: plan.depositTotal } }, meta: actor.meta });
-    await notifyUsers(tx, [reservation.clientId], { type: "reservation.cancelled", title: `Annulation ${reservation.reference}`, body: `Remboursement prévu : ${plan.clientTotal} FCFA (caution comprise).`, link: `/mes-reservations/${reservationId}` });
+    await notifyUsers(tx, [reservation.clientId], { type: "reservation.cancelled", title: `Annulation ${reservation.reference}`, body: `Remboursement prévu : ${formatFcfa(plan.clientTotal)} (caution comprise).`, link: `/mes-reservations/${reservationId}` });
     for (const lenderId of new Set(items.map((i) => i.lenderId))) {
       await notifyLender(tx, lenderId, { type: "reservation.cancelled", title: `Annulation ${reservation.reference}`, body: input.reason, link: `/loueur/reservations/${reservationId}` }, "ORDER_VIEW");
     }
@@ -196,7 +196,7 @@ export async function adminRefund(actor: Actor, paymentId: string, input: z.infe
     const refund = await executeRefund(tx, { payment, kind: "GOODWILL", amount: input.amount, reason: input.reason, requestedById: actor.userId, impacts: input.lenderId && share > 0 ? [{ lenderId: input.lenderId, amount: share, note: input.reason }] : [] });
     if (!refund) throw new AppError("CONFLICT", "Le paiement a déjà été intégralement remboursé.");
     await audit(tx, { userId: actor.userId, action: "refund.create", entity: "Refund", entityId: refund.id, newValue: { amount: refund.amount, reason: input.reason, lenderId: input.lenderId, share }, meta: actor.meta });
-    await notifyUsers(tx, [payment.userId], { type: "refund.completed", title: "Remboursement effectué", body: `${refund.amount} FCFA vous ont été remboursés.`, link: "/mes-remboursements" });
+    await notifyUsers(tx, [payment.userId], { type: "refund.completed", title: "Remboursement effectué", body: `${formatFcfa(refund.amount)} vous ont été remboursés.`, link: "/mes-remboursements" });
     return refund;
   });
 }
