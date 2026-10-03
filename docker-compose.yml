@@ -1,0 +1,41 @@
+# Démarrage complet : base PostgreSQL + application.
+#   cp .env.example .env   (puis renseigner les secrets)
+#   docker compose up --build -d
+#   docker compose run --rm app npx tsx prisma/seed.ts --force     # données de démonstration (facultatif)
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: locconnect
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-locconnect}
+      POSTGRES_DB: locconnect
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U locconnect -d locconnect"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://locconnect:${POSTGRES_PASSWORD:-locconnect}@db:5432/locconnect?schema=public
+      STORAGE_DIR: /app/storage
+      NODE_ENV: production
+    volumes:
+      - uploads:/app/storage
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
+  uploads:

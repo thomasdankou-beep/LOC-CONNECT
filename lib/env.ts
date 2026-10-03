@@ -36,6 +36,11 @@ export function env(): Env {
       const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
       throw new Error(`Configuration invalide: ${issues}`);
     }
+    // En production, refuser les valeurs d'exemple : un secret publié dans le dépôt n'en est plus un.
+    if (process.env.NODE_ENV === "production") {
+      const weak = (["AUTH_SECRET", "PAYMENT_WEBHOOK_SECRET", "CRON_SECRET"] as const).filter((k) => /remplacez-moi|change-me/i.test(parsed.data[k]));
+      if (weak.length) throw new Error(`Configuration invalide: ${weak.join(", ")} utilise encore une valeur d'exemple. Générez un secret aléatoire (openssl rand -base64 48).`);
+    }
     cached = parsed.data;
   }
   return cached;

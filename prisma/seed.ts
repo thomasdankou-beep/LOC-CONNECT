@@ -415,8 +415,9 @@ async function main() {
     for (const productId of favs) await db.favorite.upsert({ where: { userId_productId: { userId: c.id, productId } }, update: {}, create: { userId: c.id, productId } });
   }
 
-  // Versements : certains loueurs sont déjà payés pour leurs ventes anciennes.
-  for (const lender of approvedLenders) await runPayout(finance.actor, lender.lenderId).catch(() => null);
+  // Versements : la plupart des loueurs sont déjà payés pour leurs ventes anciennes ; les quatre premiers gardent
+  // un solde versable pour démontrer le versement depuis l'administration.
+  for (const lender of approvedLenders.slice(4)) await runPayout(finance.actor, lender.lenderId).catch(() => null);
 
   // Mises en avant, validation en attente, scores.
   for (const [i, lender] of [L(0), L(1), L(3), L(12)].entries()) await createPromotion(admin.actor, { productId: productOf(lender, i), type: i % 2 ? "SPONSORED" : "FEATURED", days: 60, amountPaid: 15000 });

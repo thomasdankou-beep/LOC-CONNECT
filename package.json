@@ -14,8 +14,10 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:bootstrap": "tsx prisma/bootstrap.ts",
     "db:reset": "prisma migrate reset --force",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "docs:api": "node scripts/gen-api-docs.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
