@@ -86,7 +86,7 @@ def chat_phone(left, top, w=330, h=560, msgs=None, header="Messages clients", ba
     inner = "".join(f'<div style="margin-top:12px">{m}</div>' for m in msgs)
     bd = f'<div style="margin-left:auto;background:#0062E6;color:#fff;font:700 20px Inter;border-radius:20px;padding:4px 12px">{badge}</div>' if badge else ""
     return f'''<div class="phone abs" style="left:{left}px;top:{top}px;width:{w}px;height:{h}px;background:#EFE7DE;transform:rotate({rot}deg)">
-<div style="background:#1F2C34;color:#fff;padding:22px 20px;display:flex;align-items:center;gap:12px;font:600 22px Inter"><div style="width:40px;height:40px;border-radius:50%;background:#8A94A6"></div>{header}{bd}</div>
+<div style="background:#1F2C34;color:#fff;padding:22px 20px;display:flex;align-items:center;gap:12px;font:600 22px Inter"><div style="width:40px;height:40px;border-radius:50%;background:#8A94A6"></div><span>{header}</span>{bd}</div>
 <div style="padding:4px 16px">{inner}</div></div>'''
 
 
@@ -113,12 +113,12 @@ def j03():
     note = "".join(f'<div style="border-bottom:2px solid #C5D3E8;height:44px;font:400 22px \'Space Mono\';color:#59627A;padding-top:10px">{t}</div>' for t in ["Awa · 2 perruques ?", "Fatou · payé ??", "Rappeler Mme K.", "Livraison... ?", ""])
     b += f'<div class="abs" style="left:80px;top:450px;width:380px;height:290px;background:#FFFDF5;border-radius:10px;padding:20px 26px;transform:rotate(-3deg);border-left:10px solid #E0B4B4">{note}</div>'
     items_av = ["Commandes dans un cahier", "Messages perdus", "Paiement à la livraison"]
-    b += text(80, 790, 420, "".join(f'<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;font:600 27px Inter;color:#59627A">{crs(30)}{t}</div>' for t in items_av))
+    b += text(80, 790, 420, "".join(f'<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;font:600 27px Inter;color:#59627A">{crs(30)}<span>{t}</span></div>' for t in items_av))
     b += text(600, 380, 420, '<div style="font:800 34px Montserrat;color:#4D9BFF;letter-spacing:4px">APRÈS</div>')
     b += phone("m-perruques-shop.jpg", 620, 450, 240, 330, "border-width:10px;border-radius:36px")
     b += '<div class="demo" style="left:880px;top:735px;width:150px;color:#9FB4DA;font-size:18px">Exemple de démonstration</div>'
     items_ap = ["Commandes en ligne", "Paiement mobile money", "Clients organisés"]
-    b += text(600, 820, 440, "".join(f'<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;font:600 27px Inter;color:#fff">{chk(30)}{t}</div>' for t in items_ap))
+    b += text(600, 820, 440, "".join(f'<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;font:600 27px Inter;color:#fff">{chk(30)}<span>{t}</span></div>' for t in items_ap))
     return "J03 - Avant / Après", b + cta("Votre projet commence ici"), "", False
 
 
@@ -164,7 +164,7 @@ def j07():
 <div style="border-top:2px dashed #999;margin:14px 0"></div>
 <div style="font-size:22px;line-height:1.6">Commande à emporter<br>2 plats<br>Payée avec Orange Money</div>
 <div style="border-top:2px dashed #999;margin:14px 0"></div>
-<div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:24px;color:#2E8B2A">{chk(30)} Envoyée en cuisine</div></div>'''
+<div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:24px;color:#2E8B2A">{chk(30)}<span>Envoyée en cuisine</span></div></div>'''
     b += demo(640, 590)
     b += text(80, 640, 920, f'<div class="h" style="font-size:84px">LA COMMANDE ARRIVE.<br><span style="color:{BLUE_L}">DÉJÀ PAYÉE.</span></div><div style="margin-top:26px;font-size:32px;line-height:1.3;color:#C9D6F2">Menu en ligne, commande à emporter,<br>paiement mobile money.</div>')
     return "J07 - Restaurant", b + cta("Parlons de votre menu"), "", False
@@ -228,7 +228,7 @@ def j12():
     b += '<div class="blk abs" style="left:0;top:40px;width:1080px;text-align:center;font-size:760px;line-height:1;color:#0F2E85">?</div>'
     chips = [("traiteur Yopougon", 90, 170), ("perruque livraison Abidjan", 470, 260), ("plombier Marcory", 120, 380), ("location voiture Cocody", 520, 470), ("salon tresses Riviera", 70, 560), ("décoratrice mariage", 560, 650)]
     for t, x, y in chips:
-        b += f'<div class="abs" style="left:{x}px;top:{y}px;background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.35);border-radius:40px;padding:14px 26px;display:flex;gap:12px;align-items:center;font:500 26px Inter;color:#fff">{search_ico(26,"#9FC2FF")}{t}</div>'
+        b += f'<div class="abs" style="left:{x}px;top:{y}px;background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.35);border-radius:40px;padding:14px 26px;display:flex;gap:12px;align-items:center;font:500 26px Inter;color:#fff">{search_ico(26,"#9FC2FF")}<span>{t}</span></div>'
     b += text(80, 760, 920, f'<div class="h" style="font-size:66px">COMBIEN DE CLIENTS VOUS CHERCHENT <span style="color:{BLUE_L}">SANS VOUS TROUVER ?</span></div><div style="margin-top:22px;font-size:30px;line-height:1.3;color:#C9D6F2">Personne ne peut vous donner ce chiffre. Mais vous pouvez le faire baisser.</div>')
     b += tag("Question du jour")
     return "J12 - Combien de clients vous cherchent", b + cta("Contactez-nous"), ".cta{bottom:200px}", False
@@ -278,7 +278,7 @@ def j15():
 <div style="margin-top:34px;height:8px;width:160px;background:#E3E8F2;border-radius:4px"></div><div style="margin-top:10px;height:8px;width:120px;background:#E3E8F2;border-radius:4px"></div></div>'''
     b += f'<div class="abs" style="left:300px;top:760px">{arrow(130)}</div>'
     b += laptop("d-home.jpg", 440, 520, 580)
-    b += text(80, 900, 900, "".join(f'<span style="display:inline-flex;gap:10px;align-items:center;margin-right:30px;font:600 28px Inter">{chk(28)}{t}</span>' for t in ["Vos services", "Vos réalisations", "Contact en 1 clic"]))
+    b += text(80, 900, 900, "".join(f'<span style="display:inline-flex;gap:10px;align-items:center;margin-right:30px;font:600 28px Inter">{chk(28)}<span>{t}</span></span>' for t in ["Vos services", "Vos réalisations", "Contact en 1 clic"]))
     return "J15 - Site vitrine", b + cta("Demandez votre devis"), "", False
 
 
@@ -315,7 +315,7 @@ def j19():
     b += text(80, 160, 920, f'<div class="h" style="font-size:60px">27 MESSAGES NON LUS.<br><span style="color:{BLUE_L}">OU 1 COMMANDE PAYÉE.</span></div>')
     msgs = [bubble("C'est combien ?"), bubble("Vous livrez ?"), bubble("J'ai envoyé par Wave"), bubble("Allô ?? Vous êtes là ?"), bubble("Bon, je vais voir ailleurs")]
     b += chat_phone(90, 400, 380, 590, msgs, "Clients · 23:52", "27")
-    rows = "".join(f'<div style="margin-top:24px;display:flex;gap:14px;align-items:center;font:600 26px Inter"><div style="width:46px;height:46px;border-radius:50%;background:#E8F6E6;display:flex;align-items:center;justify-content:center">{chk(28)}</div>{t}</div>' for t in ["Commandée par la cliente", "Payée avec Wave", "Reçu envoyé sur WhatsApp", "Vous validez et livrez"])
+    rows = "".join(f'<div style="margin-top:24px;display:flex;gap:14px;align-items:center;font:600 26px Inter"><div style="width:46px;height:46px;border-radius:50%;background:#E8F6E6;display:flex;align-items:center;justify-content:center">{chk(28)}</div><span>{t}</span></div>' for t in ["Commandée par la cliente", "Payée avec Wave", "Reçu envoyé sur WhatsApp", "Vous validez et livrez"])
     b += f'''<div class="phone abs" style="left:610px;top:400px;width:380px;height:590px;background:#fff;color:#061340;padding:40px 30px">
 <div style="font:800 30px Montserrat">Commande reçue</div><div style="margin-top:6px;font:500 22px Inter;color:#5A6785">23:47 · Perruque lace frontal</div>{rows}</div>'''
     b += demo(610, 1000, "#9FB4DA")
@@ -357,7 +357,7 @@ def j22():
     for i, (t, d) in enumerate(errs):
         b += f'''<div class="card abs" style="left:80px;top:{480+i*175}px;width:920px;height:150px;display:flex;align-items:center;gap:30px;padding:0 36px">
 <div class="blk" style="font-size:64px;color:#0062E6;width:90px">0{i+1}</div><div style="flex:1"><div style="font:800 32px Montserrat">{t}</div><div style="font:500 25px Inter;color:#5A6785;margin-top:6px">{d}</div></div>
-<div style="display:flex;flex-direction:column;align-items:center;gap:4px;font:700 16px Inter;color:#2E8B2A;text-align:center">{chk(40)}Corrigé<br>par un site</div></div>'''
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px;font:700 16px Inter;color:#2E8B2A;text-align:center">{chk(40)}<span>Corrigé<br>par un site</span></div></div>'''
     return "J22 - 3 erreurs qui font perdre des clients", b + cta("Parlons de votre projet"), "", False
 
 
@@ -379,7 +379,7 @@ def j24():
     b += text(80, 160, 920, f'<div class="h" style="font-size:80px">VOS CLIENTS VOUS DÉCOUVRENT <span style="color:{BLUE_L}">AVEC LE POUCE.</span></div>')
     b += phone("m-salon.jpg", 560, 400, 400, 640)
     b += '<div class="abs" style="left:640px;top:880px;width:120px;height:120px;border-radius:50%;border:5px solid rgba(255,255,255,.9);background:rgba(255,255,255,.25)"></div><div class="abs" style="left:605px;top:845px;width:190px;height:190px;border-radius:50%;border:3px solid rgba(255,255,255,.4)"></div>'
-    b += text(80, 470, 440, '<div style="font-size:34px;line-height:1.35;color:#C9D6F2">Un site pensé d\'abord pour le téléphone :</div>' + "".join(f'<div style="margin-top:22px;display:flex;gap:14px;align-items:center;font:700 32px Inter">{chk(32)}{t}</div>' for t in ["rapide", "clair", "facile à commander", "léger en données"]))
+    b += text(80, 470, 440, '<div style="font-size:34px;line-height:1.35;color:#C9D6F2">Un site pensé d\'abord pour le téléphone :</div>' + "".join(f'<div style="margin-top:22px;display:flex;gap:14px;align-items:center;font:700 32px Inter">{chk(32)}<span>{t}</span></div>' for t in ["rapide", "clair", "facile à commander", "léger en données"]))
     b += demo(560, 1050, "#9FB4DA")
     return "J24 - Mobile-first", b + cta("Créez votre site"), "", False
 
@@ -437,8 +437,8 @@ def j29():
     b += text(80, 160, 920, f'<div class="h" style="font-size:84px">VENDEZ.<br>RÉSERVEZ.<br><span class="pf" style="color:{BLUE_L};font-size:96px">Encaissez.</span></div><div style="margin-top:20px;font-size:30px;line-height:1.3;color:#C9D6F2">Sites web, boutiques en ligne, réservation et paiement mobile money pour votre entreprise.</div>')
     b += laptop("d-home.jpg", 80, 620, 600)
     b += phone("m-perruques-shop.jpg", 720, 590, 240, 400, "border-width:10px;border-radius:38px")
-    b += f'<div class="card abs" style="left:520px;top:930px;padding:16px 22px;display:flex;gap:12px;align-items:center;font:700 22px Inter">{chk(26)}Rendez-vous réservé</div>'
-    b += f'<div class="card abs" style="left:820px;top:860px;padding:16px 22px;display:flex;gap:12px;align-items:center;font:700 22px Inter">{chk(26)}Payé · Wave</div>'
+    b += f'<div class="card abs" style="left:520px;top:930px;padding:16px 22px;display:flex;gap:12px;align-items:center;font:700 22px Inter">{chk(26)}<span>Rendez-vous réservé</span></div>'
+    b += f'<div class="card abs" style="left:820px;top:860px;padding:16px 22px;display:flex;gap:12px;align-items:center;font:700 22px Inter">{chk(26)}<span>Payé · Wave</span></div>'
     b += '<div class="abs" style="left:80px;top:540px;background:#47B73F;color:#fff;border-radius:20px;padding:14px 24px;font:800 26px Montserrat">Site vitrine dès 50 000 FCFA <span style="font:500 20px Inter">· offre jusqu\'au 31/12/2026</span></div>'
     b += text(80, 1010, 420, '<div style="font:600 20px Inter;color:#9FB4DA;line-height:1.5">Sites web · E-commerce · Réservation · Paiement en ligne · Digitalisation · SEO</div>')
     return "J29 - Grande affiche commerciale", b + cta("Demandez votre devis"), ".cta{left:auto;right:80px;bottom:200px}", False
