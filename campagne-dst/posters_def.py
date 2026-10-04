@@ -1,23 +1,27 @@
 """Les 30 affiches de la campagne DST TECHNOLOGIE. Chaque fonction renvoie (titre, corps HTML, css en plus, format story)."""
 from build import A
 
-LOCK = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#47B73F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
+def ico(name, w, h=None):
+    return f'<img src="{A("ico-" + name + ".png")}" style="width:{w}px;height:{h or w}px;flex:none">'
 
 
-def chk(s=34, c="#47B73F", w=3):
-    return f'<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="{w}" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>'
+LOCK = ico("lock-green", 44)
 
 
-def crs(s=34, c="#8A94A6"):
-    return f'<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+def chk(s=34, c=None, w=None):
+    return ico("chk-green", s)
+
+
+def crs(s=34, c=None):
+    return ico("crs-grey", s)
 
 
 def arrow(w=120, c="#4D9BFF"):
-    return f'<svg width="{w}" height="40" viewBox="0 0 120 40" fill="none" stroke="{c}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h104M92 6l16 14-16 14"/></svg>'
+    return ico("arrow-light" if c == "#4D9BFF" else "arrow-blue", w, int(w / 3))
 
 
 def search_ico(s=40, c="#5A6785"):
-    return f'<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="2.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>'
+    return ico("search-grey" if c == "#5A6785" else "search-light", s)
 
 
 NIGHT = "background:radial-gradient(900px 700px at 85% 5%,#0B3FB0 0%,rgba(10,42,122,0) 62%),radial-gradient(800px 800px at 0% 95%,#0A2A7A 0%,rgba(6,19,64,0) 60%),#061340;"
@@ -281,7 +285,7 @@ def j15():
 def j16():
     b = bg(WHITE) + tag("Image de marque", dark=False)
     b += text(80, 160, 920, '<div class="h" style="font-size:76px;color:#061340">VOTRE IMAGE MÉRITE MIEUX QU\'UN <span style="color:#0062E6">SIMPLE STATUT.</span></div><div style="margin-top:22px;font-size:30px;color:#33415F">24 heures, puis plus rien. Votre site, lui, reste.</div>')
-    ring = '<svg width="300" height="300" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="#C7E9C4" stroke-width="5" stroke-dasharray="30 4.5"/><text x="50" y="47" text-anchor="middle" font-family="Montserrat" font-weight="800" font-size="16" fill="#8A94A6">24 h</text><text x="50" y="64" text-anchor="middle" font-family="Inter" font-size="8" fill="#8A94A6">puis disparaît</text></svg>'
+    ring = f'<div style="position:relative;width:300px;height:300px">{ico("ring-24h", 300)}<div style="position:absolute;left:0;top:105px;width:300px;text-align:center;font:800 48px Montserrat;color:#8A94A6">24 h</div><div style="position:absolute;left:0;top:170px;width:300px;text-align:center;font:500 24px Inter;color:#8A94A6">puis disparaît</div></div>'
     b += f'<div class="abs" style="left:110px;top:620px">{ring}</div>'
     b += f'<div class="abs" style="left:430px;top:755px">{arrow(110,"#0062E6")}</div>'
     b += phone("m-home.jpg", 640, 560, 290, 470)
