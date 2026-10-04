@@ -1,6 +1,6 @@
 """Génère les affiches HTML de la campagne DST (une page 1080x1350 ou 1080x1920 par fichier).
 Les images pointent vers raw.githubusercontent.com pour l'import Canva."""
-import os, sys, importlib
+import os, re, sys, importlib
 
 BASE = "https://raw.githubusercontent.com/thomasdankou-beep/loc-connect/claude/project-thread-qolnhy/campagne-dst/assets/"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -17,7 +17,7 @@ body{background:#ccc}
 .tag{position:absolute;left:80px;top:72px;padding:12px 26px;border-radius:40px;font:700 24px 'Montserrat';letter-spacing:2px;text-transform:uppercase}
 .tag.dark{background:rgba(255,255,255,.12);color:#fff;border:1.5px solid rgba(255,255,255,.35)}
 .tag.light{background:#E6EEFC;color:#0062E6}
-.cta{position:absolute;left:80px;bottom:212px;background:#47B73F;color:#fff;font:800 30px 'Montserrat';letter-spacing:1px;padding:26px 46px;border-radius:60px;text-transform:uppercase}
+.cta{white-space:nowrap;position:absolute;left:80px;bottom:212px;background:#47B73F;color:#fff;font:800 30px 'Montserrat';letter-spacing:1px;padding:26px 46px;border-radius:60px;text-transform:uppercase}
 .sig{position:absolute;left:0;right:0;bottom:0;height:172px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 80px}
 .sig img{height:118px}
 .sig .ct{text-align:right;color:#061340}
@@ -57,6 +57,8 @@ if __name__ == "__main__":
         if only and key not in only:
             continue
         title, body, extra, story = fn()
+        body = re.sub(r"(?<=[\w»)\.]) ([?!:;»])", "\u00a0\\1", body)
+        body = body.replace("« ", "«\u00a0")
         with open(os.path.join(HERE, "posters", f"{key}.html"), "w") as f:
             f.write(page(title, body + sig(), extra, story))
         print("ok", key)
