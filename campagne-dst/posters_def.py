@@ -229,7 +229,7 @@ def j12():
     chips = [("traiteur Yopougon", 90, 170), ("perruque livraison Abidjan", 470, 260), ("plombier Marcory", 120, 380), ("location voiture Cocody", 520, 470), ("salon tresses Riviera", 70, 560), ("décoratrice mariage", 560, 650)]
     for t, x, y in chips:
         b += f'<div class="abs" style="left:{x}px;top:{y}px;background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.35);border-radius:40px;padding:14px 26px;display:flex;gap:12px;align-items:center;font:500 26px Inter;color:#fff">{search_ico(26,"#9FC2FF")}<span>{t}</span></div>'
-    b += text(80, 760, 920, f'<div class="h" style="font-size:66px">COMBIEN DE CLIENTS VOUS CHERCHENT <span style="color:{BLUE_L}">SANS VOUS TROUVER ?</span></div><div style="margin-top:22px;font-size:30px;line-height:1.3;color:#C9D6F2">Personne ne peut vous donner ce chiffre. Mais vous pouvez le faire baisser.</div>')
+    b += text(80, 760, 920, f'<div class="h" style="font-size:66px">COMBIEN DE CLIENTS VOUS CHERCHENT <span style="color:{BLUE_L}">SANS VOUS TROUVER ?</span></div><div style="margin-top:22px;font-size:30px;line-height:1.3;color:#C9D6F2">Personne ne peut vous donner ce chiffre.<br>Mais vous pouvez le faire baisser.</div>')
     b += tag("Question du jour")
     return "J12 - Combien de clients vous cherchent", b + cta("Contactez-nous"), ".cta{bottom:200px}", False
 
@@ -427,7 +427,7 @@ def j28():
         b += f'''<div class="abs" style="left:{x}px;top:450px;width:290px;height:560px;border-radius:28px;border:3px solid {c};background:#fff;overflow:hidden">
 <div style="padding:24px 22px 0"><div style="font:600 22px Inter;color:#5A6785">Vous voulez…</div><div style="font:800 28px Montserrat;color:#061340;line-height:1.1;margin-top:6px;height:64px">{need}</div>
 <div style="margin-top:14px;background:{c};color:#fff;font:800 22px Montserrat;border-radius:20px;padding:8px 14px;display:inline-block">{sol}</div></div>
-<div style="margin:24px auto 0;width:220px;height:340px;border-radius:30px 30px 0 0;border:8px solid #0B1020;border-bottom:0;overflow:hidden"><img src="{A(img)}" style="width:100%;object-fit:cover;object-position:top"></div></div>'''
+<div style="margin:24px auto 0;width:220px;height:340px;border-radius:30px 30px 0 0;border:8px solid #0B1020;border-bottom:0;overflow:hidden"><img src="{A(img.replace('.jpg','-top.jpg'))}" style="width:204px;height:340px;display:block"></div></div>'''
     b += text(560, 1030, 440, '<div style="font:700 26px Inter;color:#0062E6;text-align:right">Pas sûr ? On vous conseille.</div>')
     return "J28 - Quel type de site pour vous", b + cta("Demandez conseil"), ".cta{bottom:200px}", False
 
