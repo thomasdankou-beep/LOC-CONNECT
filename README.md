@@ -85,6 +85,7 @@ Le conteneur applique les migrations au démarrage. En production l'application 
 
 ## Documentation
 
+- [`docs/COURS.md`](docs/COURS.md) : **cours pour débutants** sur les langages et outils du projet (TypeScript, React, Tailwind, Next.js, Prisma), avec exercices
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) : couches, modèle de données, machine à états, finance, concurrence, sécurité
 - [`docs/API.md`](docs/API.md) : les 150 opérations de l'API REST (générée)
 - [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) : mise en production et exploitation
