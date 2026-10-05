@@ -4,7 +4,7 @@ next-env.d.ts
 *.tsbuildinfo
 .env
 .env.local
-storage/
+/storage/
 coverage/
 web/node_modules
 web/.next
