@@ -30,7 +30,8 @@ export async function openDisputeTx(tx: Tx, actor: Actor, input: DisputeInput) {
   if (lenderItems.length === 0) throw new AppError("VALIDATION_ERROR", "Ce loueur n'est pas concerné par cette réservation.");
   const targets = (input.itemId ? lenderItems.filter((i) => i.id === input.itemId) : lenderItems).filter((i) => DISPUTABLE_STATUSES.includes(i.status));
   if (targets.length === 0) throw new AppError("CONFLICT", "Aucune ligne de cette réservation ne peut faire l'objet d'un litige pour le moment.");
-  const maxAmount = targets.reduce((a, i) => a + i.subtotal + i.depositAmount, 0);
+  // Plafond : location, caution et valeur de remplacement des articles (un constat peut retenir jusqu'à cette valeur).
+  const maxAmount = targets.reduce((a, i) => a + i.subtotal + i.depositAmount + i.refundPrice * i.quantity, 0);
   if (input.disputedAmount > maxAmount) throw new AppError("VALIDATION_ERROR", "Le montant contesté dépasse le montant des lignes concernées.");
 
   const dispute = await tx.dispute.create({

@@ -5,6 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { listCategoryTree, listCities } from "@/services/catalog";
 import { PageHeader } from "@/components/ui/card";
 import { ProductForm } from "@/features/lender/product-form";
+import { depositPercentFrom } from "@/services/pricing";
 import { ArrowLeft } from "@/components/ui/icons";
 
 export const metadata: Metadata = { title: "Nouveau produit", robots: { index: false } };
@@ -21,6 +22,7 @@ export default async function Page() {
         cities={cities.map((c) => ({ id: c.id, name: c.name }))}
         defaults={{ name: "", description: "", conditions: "", categoryId: "", cityId: cities.find((c) => c.id)?.id ?? "", unitPrice: 0, stockQuantity: 0, depositAmount: 0, refundPrice: 0, minDays: 1, maxDays: null, allowsExtraBilling: settings["deposit.extra_billing_default"] }}
         canPublish={actor.lenderStatus === "APPROVED"}
+        depositPercent={depositPercentFrom(settings)}
       />
     </>
   );

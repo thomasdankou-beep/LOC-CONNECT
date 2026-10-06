@@ -7,7 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { assertTransition, aggregateStatus } from "@/lib/state-machine";
 import { can, type Actor } from "@/lib/auth/actor";
 import { assertAvailable, validateRentalPeriod } from "./availability";
-import { computeTotals, effectivePaymentMode, priceLine, type LenderDeliveryTerms } from "./pricing";
+import { computeTotals, depositPercentFrom, effectivePaymentMode, priceLine, type LenderDeliveryTerms } from "./pricing";
 import { notifyLender, notifyUsers } from "./notifications";
 import { assertCashSettled, syncCashSettlement } from "./cash";
 
@@ -61,7 +61,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
     }
 
     const priced = hold.items.map((i) =>
-      priceLine({ productId: i.productId, lenderId: i.product.lenderId, quantity: i.quantity, start: i.startDate, end: i.endDate, unitPrice: i.product.unitPrice, depositAmount: i.product.depositAmount, refundPrice: i.product.refundPrice, commissionRateBps: terms.get(i.product.lenderId)!.commissionRateBps, paymentMode: terms.get(i.product.lenderId)!.paymentMode, minCashDeposit: settings["cash.min_deposit"] }),
+      priceLine({ productId: i.productId, lenderId: i.product.lenderId, quantity: i.quantity, start: i.startDate, end: i.endDate, unitPrice: i.product.unitPrice, depositAmount: i.product.depositAmount, refundPrice: i.product.refundPrice, commissionRateBps: terms.get(i.product.lenderId)!.commissionRateBps, paymentMode: terms.get(i.product.lenderId)!.paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings) }),
     );
     const totals = computeTotals(priced, terms, hold.fulfillmentType, hold.deliveryCityId, settings["commission.on_delivery"]);
 
@@ -101,6 +101,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
             paymentMode: l.paymentMode,
             cashDue: l.cashDue,
             depositAmount: l.deposit,
+            depositPercent: l.depositPercent ?? null,
             refundPrice: l.refundPrice,
             allowsExtraBilling: hold.items[idx].product.allowsExtraBilling,
             status: "HOLD",

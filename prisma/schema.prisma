@@ -781,6 +781,7 @@ model ReservationItem {
   paymentMode        LenderPaymentMode @default(ONLINE_FULL) // figé à la réservation
   cashDue            Int               @default(0) // part de la location réglée en espèces (le reste est payé en ligne)
   depositAmount      Int
+  depositPercent     Int? // caution en % de la location, figée à la réservation (null : caution fixe par unité)
   refundPrice        Int
   allowsExtraBilling Boolean           @default(true)
   status             ReservationStatus @default(PENDING_PAYMENT)

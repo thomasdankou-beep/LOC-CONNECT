@@ -12,6 +12,8 @@ import { LinkButton } from "@/components/ui/button";
 import { HandCoins, ShoppingCart, Storefront, ShieldCheck, WarningCircle } from "@/components/ui/icons";
 import { Badge } from "@/components/ui/badge";
 import { PAYMENT_MODE } from "@/lib/labels";
+import { getSettings } from "@/lib/settings";
+import { depositPercentFrom } from "@/services/pricing";
 import { CartLineControls } from "@/features/cart/cart-line-controls";
 
 export const metadata: Metadata = { title: "Mon panier", robots: { index: false } };
@@ -27,6 +29,7 @@ export default async function CartPage() {
     );
   }
   const cart = await getCart(actor.userId);
+  const depositPercent = depositPercentFrom(await getSettings());
 
   if (cart.lines.length === 0) {
     return (
@@ -109,7 +112,7 @@ export default async function CartPage() {
                 <dd className="tabular-nums text-ink">{formatFcfa(cart.subtotal)}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-muted">Cautions (par article)</dt>
+                <dt className="text-muted">Cautions{depositPercent != null ? ` (${depositPercent} % de la location)` : ""}</dt>
                 <dd className="tabular-nums text-ink">{formatFcfa(cart.deposit)}</dd>
               </div>
               <div className="flex justify-between">

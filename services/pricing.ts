@@ -1,6 +1,19 @@
-import { applyBps, sum } from "@/lib/money";
+import { applyBps, prorate, sum } from "@/lib/money";
 import { daysBetween } from "@/lib/dates";
 import type { FulfillmentType, LenderPaymentMode } from "@prisma/client";
+
+/** Pourcentage de caution applicable (null : caution fixée par unité sur chaque produit). */
+export function depositPercentFrom(settings: { "deposit.mode": string; "deposit.percent": number }): number | null {
+  return settings["deposit.mode"] === "PERCENT_OF_RENTAL" ? Math.min(100, Math.max(0, settings["deposit.percent"])) : null;
+}
+
+/**
+ * Caution d'une ligne : un pourcentage de la location (la somme des lignes d'un loueur donne le pourcentage de son total),
+ * ou la caution par unité fixée sur le produit.
+ */
+export function depositFor(subtotal: number, quantity: number, depositUnit: number, depositPercent: number | null | undefined): number {
+  return depositPercent != null ? prorate(subtotal, depositPercent, 100) : Math.round(depositUnit * quantity);
+}
 
 /**
  * Mode de paiement réellement appliqué à un loueur : le mode espèces exige l'option globale et l'autorisation de l'administration.
@@ -34,6 +47,8 @@ export type PricingInput = {
   commissionRateBps: number;
   paymentMode?: LenderPaymentMode;
   minCashDeposit?: number;
+  /** Caution en % de la location ; null ou absent : caution par unité du produit. */
+  depositPercent?: number | null;
 };
 
 export type PricedLine = PricingInput & {
@@ -57,7 +72,7 @@ export function priceLine(input: PricingInput): PricedLine {
     days,
     subtotal,
     commission,
-    deposit: input.depositAmount * input.quantity,
+    deposit: depositFor(subtotal, input.quantity, input.depositAmount, input.depositPercent),
     paymentMode,
     cashDue: subtotal - onlineRentalFor(subtotal, commission, paymentMode, input.minCashDeposit ?? 0),
   };

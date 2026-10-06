@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { getSettings } from "@/lib/settings";
+import { depositPercentFrom } from "@/services/pricing";
 import Link from "next/link";
 import { can } from "@/lib/auth/actor";
 import { pageLender } from "@/lib/auth/page";
@@ -20,6 +22,7 @@ export const metadata: Metadata = { title: "Mes produits", robots: { index: fals
 export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string }> }) {
   const actor = await pageLender("PRODUCT_VIEW");
   const sp = await searchParams;
+  const depositPercent = depositPercentFrom(await getSettings());
   const result = await listLenderProducts(actor.lenderId, { q: sp.q, status: sp.status as ProductStatus | undefined, page: Number(sp.page) || 1 });
   return (
     <>
@@ -37,7 +40,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
             </Link>
           ) },
           { header: "Prix / jour", align: "right", cell: (p) => formatFcfa(p.unitPrice) },
-          { header: "Caution", align: "right", cell: (p) => formatFcfa(p.depositAmount) },
+          { header: "Caution", align: "right", cell: (p) => (depositPercent != null ? `${depositPercent} % de la location` : formatFcfa(p.depositAmount)) },
           { header: "Stock", align: "right", cell: (p) => p.stockQuantity },
           { header: "Statut", cell: (p) => <div><StatusBadge entry={PRODUCT_STATUS[p.status]} />{p.status === "REJECTED" && p.rejectionReason && <p className="mt-1 max-w-48 text-xs text-danger">{p.rejectionReason}</p>}</div> },
         ]}

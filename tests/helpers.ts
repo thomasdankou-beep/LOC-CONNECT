@@ -18,6 +18,9 @@ export async function resetDb() {
   invalidateSettings();
   resetRateLimits();
   await seedSystemData(db);
+  // Les scénarios historiques raisonnent sur une caution fixe par produit ; le calcul en pourcentage a ses propres tests.
+  await db.setting.update({ where: { key: "deposit.mode" }, data: { value: "FIXED_PER_PRODUCT" } });
+  invalidateSettings();
 }
 
 let n = 0;

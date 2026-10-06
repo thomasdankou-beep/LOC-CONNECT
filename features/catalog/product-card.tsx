@@ -5,14 +5,17 @@ import { LinkButton } from "@/components/ui/button";
 import { MapPin } from "@/components/ui/icons";
 import { Stars as StarsRating } from "@/components/ui/misc";
 import { formatFcfa } from "@/lib/money";
+import { getSettings } from "@/lib/settings";
+import { depositPercentFrom } from "@/services/pricing";
 import type { ProductCard as ProductCardData } from "@/services/catalog";
 import { FavoriteButton } from "./favorite-button";
 import { QuickAdd } from "./quick-add";
 
 
-export function ProductCard({ product, signedIn, isClient, favorite = false, start, end }: { product: ProductCardData; signedIn: boolean; isClient: boolean; favorite?: boolean; start?: string; end?: string }) {
+export async function ProductCard({ product, signedIn, isClient, favorite = false, start, end }: { product: ProductCardData; signedIn: boolean; isClient: boolean; favorite?: boolean; start?: string; end?: string }) {
   const p = product;
   const unavailable = p.availableQty != null && p.availableQty <= 0;
+  const depositPercent = depositPercentFrom(await getSettings());
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card transition hover:-translate-y-0.5">
       <div className="relative aspect-[4/3] overflow-hidden">
@@ -48,7 +51,7 @@ export function ProductCard({ product, signedIn, isClient, favorite = false, sta
             <p className="text-lg font-semibold tabular-nums text-ink">
               {formatFcfa(p.unitPrice)} <span className="text-sm font-normal text-muted">/ jour</span>
             </p>
-            <p className="text-xs text-muted">Caution : {formatFcfa(p.depositAmount)}</p>
+            <p className="text-xs text-muted">Caution : {depositPercent != null ? `${depositPercent} % de la location` : formatFcfa(p.depositAmount)}</p>
           </div>
         </div>
         <div className="relative z-10 mt-4 flex gap-2">

@@ -14,7 +14,7 @@ type Cat = { id: string; name: string; children: { id: string; name: string }[] 
 type City = { id: string; name: string };
 export type ProductDefaults = { id?: string; name: string; description: string; conditions: string; categoryId: string; cityId: string; unitPrice: number; stockQuantity: number; depositAmount: number; refundPrice: number; minDays: number; maxDays: number | null; allowsExtraBilling: boolean };
 
-export function ProductForm({ categories, cities, defaults, canPublish }: { categories: Cat[]; cities: City[]; defaults: ProductDefaults; canPublish: boolean }) {
+export function ProductForm({ categories, cities, defaults, canPublish, depositPercent }: { categories: Cat[]; cities: City[]; defaults: ProductDefaults; canPublish: boolean; depositPercent: number | null }) {
   const router = useRouter();
   const { toast } = useToast();
   const editing = Boolean(defaults.id);
@@ -96,7 +96,15 @@ export function ProductForm({ categories, cities, defaults, canPublish }: { cate
           <div className="grid gap-4 p-5 sm:grid-cols-2">
             <Input label="Prix par jour (FCFA)" name="unitPrice" type="number" min={1} defaultValue={defaults.unitPrice || ""} required error={fe("unitPrice")} />
             {!editing && <Input label="Stock initial" name="stockQuantity" type="number" min={0} defaultValue={defaults.stockQuantity || ""} required error={fe("stockQuantity")} />}
-            <Input label="Caution par unité (FCFA)" name="depositAmount" type="number" min={0} defaultValue={defaults.depositAmount || 0} required error={fe("depositAmount")} />
+            {depositPercent != null ? (
+              <div className="rounded-control border border-line bg-surface-2/60 px-3 py-2.5 text-sm">
+                <input type="hidden" name="depositAmount" value={defaults.depositAmount || 0} />
+                <p className="font-medium text-ink">Caution : {depositPercent} % de la location</p>
+                <p className="mt-0.5 text-muted">Calculée automatiquement par LOC&apos;CONNECT sur le montant de location de vos articles dans chaque commande.</p>
+              </div>
+            ) : (
+              <Input label="Caution par unité (FCFA)" name="depositAmount" type="number" min={0} defaultValue={defaults.depositAmount || 0} required error={fe("depositAmount")} />
+            )}
             <Input label="Prix de remboursement par unité (FCFA)" name="refundPrice" type="number" min={0} defaultValue={defaults.refundPrice || 0} required hint="Appliqué aux unités perdues ou détruites." error={fe("refundPrice")} />
             <Input label="Durée minimale (jours)" name="minDays" type="number" min={1} defaultValue={defaults.minDays} error={fe("minDays")} />
             <Input label="Durée maximale (jours)" name="maxDays" type="number" min={1} defaultValue={defaults.maxDays ?? ""} hint="Laisser vide pour la limite de la plateforme." error={fe("maxDays")} />

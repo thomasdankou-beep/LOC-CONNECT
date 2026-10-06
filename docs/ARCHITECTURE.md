@@ -52,7 +52,12 @@ Chaque loueur choisit son mode (`Lender.paymentMode`) : `ONLINE_FULL` (tout en l
 
 ## Caution et retour
 
-Une caution par ligne. Le constat de retour impose `retourné + perdu = loué`. La retenue est `min(pertes × prix de remboursement + dommages déclarés, caution)` ; l'excédent n'est facturable que si le produit l'autorise (`allowsExtraBilling`). Sans dommage, la caution est libérée immédiatement ; sinon le client a `return.contest_window_hours` pour contester, passé ce délai le constat est réglé automatiquement. Les photos de preuve sont **privées** : servies par `/api/files/private/…` avec contrôle d'accès.
+Une caution par ligne. Son montant dépend du paramètre `deposit.mode` :
+
+- `PERCENT_OF_RENTAL` (par défaut) : `deposit.percent` (30 %) du sous-total de location de la ligne. La somme des lignes d'un loueur donne donc 30 % de son total. Le pourcentage est figé sur `ReservationItem.depositPercent` ; une modification (quantité, dates, ajout d'article) recalcule la caution avec ce même pourcentage.
+- `FIXED_PER_PRODUCT` : caution par unité saisie par le loueur sur le produit (`depositPercent` reste nul).
+
+Le constat de retour impose `retourné + perdu = loué`. La retenue est `min(pertes × prix de remboursement + dommages déclarés, caution)` ; l'excédent n'est facturable que si le produit l'autorise (`allowsExtraBilling`). Sans dommage, la caution est libérée immédiatement ; sinon le client a `return.contest_window_hours` pour contester, passé ce délai le constat est réglé automatiquement. Les photos de preuve sont **privées** : servies par `/api/files/private/…` avec contrôle d'accès.
 
 ## Modification
 

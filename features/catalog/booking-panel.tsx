@@ -17,6 +17,8 @@ type Props = {
   productId: string;
   unitPrice: number;
   deposit: number;
+  /** Caution en % de la location (null : caution fixe par unité). */
+  depositPercent: number | null;
   stock: number;
   minDays: number;
   maxDays: number | null;
@@ -26,7 +28,7 @@ type Props = {
   initialEnd?: string;
 };
 
-export function BookingPanel({ productId, unitPrice, deposit, stock, minDays, maxDays, signedIn, canBook, initialStart, initialEnd }: Props) {
+export function BookingPanel({ productId, unitPrice, deposit, depositPercent, stock, minDays, maxDays, signedIn, canBook, initialStart, initialEnd }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const [start, setStart] = useState<string | null>(initialStart ?? null);
@@ -49,7 +51,8 @@ export function BookingPanel({ productId, unitPrice, deposit, stock, minDays, ma
 
   const tooLong = maxDays != null && days > maxDays;
   const rental = unitPrice * qty * days;
-  const total = rental + deposit * qty;
+  const depositTotal = depositPercent != null ? Math.round((rental * depositPercent) / 100) : deposit * qty;
+  const total = rental + depositTotal;
 
   async function add(go: boolean) {
     setError(null);
@@ -108,12 +111,12 @@ export function BookingPanel({ productId, unitPrice, deposit, stock, minDays, ma
           <dd className="tabular-nums text-ink">{days > 0 ? formatFcfa(rental) : "À calculer"}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="flex items-center gap-1.5 text-muted"><ShieldCheck size={16} /> Caution (restituée au retour)</dt>
-          <dd className="tabular-nums text-ink">{formatFcfa(deposit * qty)}</dd>
+          <dt className="flex items-center gap-1.5 text-muted"><ShieldCheck size={16} /> Caution{depositPercent != null ? ` (${depositPercent} %)` : ""}, restituée au retour</dt>
+          <dd className="tabular-nums text-ink">{depositPercent != null && days === 0 ? "À calculer" : formatFcfa(depositTotal)}</dd>
         </div>
         <div className="flex justify-between border-t border-line pt-3 text-base font-semibold">
           <dt className="text-ink">Total à payer</dt>
-          <dd className="tabular-nums text-ink">{days > 0 ? formatFcfa(total) : formatFcfa(deposit * qty)}</dd>
+          <dd className="tabular-nums text-ink">{days > 0 ? formatFcfa(total) : depositPercent != null ? "À calculer" : formatFcfa(depositTotal)}</dd>
         </div>
       </dl>
       <p className="mt-2 text-xs text-muted">Les montants sont recalculés par le serveur au moment de la réservation.</p>
