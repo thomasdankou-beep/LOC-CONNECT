@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { pageAdmin } from "@/lib/auth/page";
 import { formatDate } from "@/lib/dates";
-import { LENDER_STATUS } from "@/lib/labels";
+import { LENDER_STATUS, PAYMENT_MODE } from "@/lib/labels";
 import { getSettings } from "@/lib/settings";
 import { listLenders } from "@/services/admin";
 import { PageHeader } from "@/components/ui/card";
@@ -20,7 +20,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const defaultBps = settings["commission.rate_bps"];
   return (
     <>
-      <PageHeader title="Loueurs" description="Validation des entreprises, suspension et commission spécifique par loueur." />
+      <PageHeader title="Loueurs" description="Validation des entreprises, suspension, commission spécifique et ouverture du paiement en espèces par loueur." />
       <FilterBar basePath="/admin/loueurs" q={sp.q} status={sp.status} statuses={Object.entries(LENDER_STATUS).map(([value, e]) => ({ value, label: e.label }))} placeholder="Nom de l'entreprise" />
       <DataTable
         rows={r.rows}
@@ -31,8 +31,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
           { header: "Ville", cell: (l) => l.city.name },
           { header: "Produits", align: "right", cell: (l) => l._count.products },
           { header: "Commission", cell: (l) => <span className="block"><span className="block">{l.commissionRateBps == null ? `${defaultBps / 100} % (défaut)` : <Badge tone="info">{l.commissionRateBps / 100} %</Badge>}</span><span className="block text-xs text-muted">Formule {l.subscriptions[0] ? { FREE: "gratuite", PRO: "Pro", PREMIUM: "Premium" }[l.subscriptions[0].plan] : "gratuite"}</span></span> },
+          { header: "Paiement", cell: (l) => <span className="block"><Badge tone={l.paymentMode === "DEPOSIT_CASH" ? "warning" : "neutral"}>{PAYMENT_MODE[l.paymentMode].short}</Badge>{l.cashModeAllowed && l.paymentMode !== "DEPOSIT_CASH" && <span className="mt-1 block text-xs text-muted">Espèces autorisées</span>}</span> },
           { header: "Statut", cell: (l) => <div><StatusBadge entry={LENDER_STATUS[l.status]} />{l.rejectionReason && l.status !== "APPROVED" && <p className="mt-1 max-w-48 text-xs text-muted">{l.rejectionReason}</p>}</div> },
-          { header: "Actions", className: "min-w-52", cell: (l) => <LenderActions id={l.id} status={l.status} commissionBps={l.commissionRateBps} defaultBps={defaultBps} /> },
+          { header: "Actions", className: "min-w-52", cell: (l) => <LenderActions id={l.id} status={l.status} commissionBps={l.commissionRateBps} defaultBps={defaultBps} cashAllowed={l.cashModeAllowed} /> },
         ]}
       />
       <Pagination page={r.page} totalPages={r.totalPages} basePath="/admin/loueurs" params={{ q: sp.q, status: sp.status }} />

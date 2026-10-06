@@ -1,6 +1,6 @@
 # API REST LOC'CONNECT
 
-Document généré par `npm run docs:api` à partir du code (152 opérations). Ne pas modifier à la main.
+Document généré par `npm run docs:api` à partir du code (159 opérations). Ne pas modifier à la main.
 
 ## Conventions
 
@@ -19,6 +19,8 @@ Document généré par `npm run docs:api` à partir du code (152 opérations). N
 | `GET` | `/api/admin/audit` | journal d'audit global (utilisateur, action, entité, anciennes et nouvelles valeurs, IP). |
 | `GET` | `/api/admin/cancellation-policy` | paliers de remboursement en vigueur. |
 | `PUT` | `/api/admin/cancellation-policy` | remplace les paliers (délai minimal avant le début, pourcentage remboursé). |
+| `GET` | `/api/admin/cash` | soldes payés en espèces aux loueurs, par statut. |
+| `POST` | `/api/admin/cash/:id` | support, débloquer la saisie du code ou constater un paiement en espèces. |
 | `GET` | `/api/admin/categories` | catégories et sous-catégories (y compris inactives). |
 | `POST` | `/api/admin/categories` | crée une catégorie ou une sous-catégorie (parentId). |
 | `PATCH` | `/api/admin/categories/:id` |  |
@@ -31,6 +33,7 @@ Document généré par `npm run docs:api` à partir du code (152 opérations). N
 | `GET` | `/api/admin/disputes` | tous les litiges. Décision via PATCH /api/disputes/:id. |
 | `GET` | `/api/admin/lenders` | loueurs (filtre par statut de validation). |
 | `PATCH` | `/api/admin/lenders/:id` | valider, rejeter, suspendre ou réactiver un loueur (motif obligatoire pour rejeter ou suspendre). |
+| `PUT` | `/api/admin/lenders/:id/cash-mode` | ouvre ou retire au loueur le mode acompte en ligne + solde en espèces. |
 | `PATCH` | `/api/admin/lenders/:id/commission` | taux de commission spécifique (null = taux par défaut). Appliqué aux nouvelles réservations uniquement. |
 | `PATCH` | `/api/admin/messages/:id` | marque un message de contact comme traité ou le rouvre. |
 | `GET` | `/api/admin/notifications` | toutes les notifications (internes, e-mail). |
@@ -169,6 +172,7 @@ Document généré par `npm run docs:api` à partir du code (152 opérations). N
 | `GET` | `/api/lenders/me/audit` | audit de l'entreprise, filtrable par utilisateur, action, entité et période. |
 | `GET` | `/api/lenders/me/balance` | soldes et écritures (gelés, bloqués, disponibles, déductions). |
 | `GET` | `/api/lenders/me/clients` | clients ayant loué chez ce loueur. |
+| `PUT` | `/api/lenders/me/payment-mode` | tout en ligne, ou acompte en ligne et solde en espèces (si ouvert par l'administration). |
 | `POST` | `/api/lenders/me/payout-details` | demande de modification des coordonnées de versement (autorisation renforcée de l'administration). |
 | `GET` | `/api/lenders/me/payouts` | versements reçus. |
 | `GET` | `/api/lenders/me/permissions` | catalogue des permissions granulaires. |
@@ -255,6 +259,9 @@ Document généré par `npm run docs:api` à partir du code (152 opérations). N
 | `PATCH` | `/api/reservations/:id` | fait avancer le statut des lignes. Un loueur peut valider, préparer et remettre (permissions ORDER_*). L'administration peut corriger un statut (motif obligatoire, audité). Transitions validées par la machine à états. |
 | `POST` | `/api/reservations/:id/cancel` | annule des lignes (ou tout) et rembourse selon la politique ; effet précisé par ligne et par loueur. |
 | `GET` | `/api/reservations/:id/cancellation-preview` | montant remboursable avant confirmation. |
+| `GET` | `/api/reservations/:id/cash` | soldes à régler en espèces (le code de remise n'est visible que du client et de l'administration). |
+| `POST` | `/api/reservations/:id/cash` | le loueur confirme l'encaissement du solde avec le code de remise donné par le client. |
+| `POST` | `/api/reservations/:id/cash/unpaid` | le client n'a pas payé le solde à la remise ; lignes du loueur annulées, caution restituée. |
 | `POST` | `/api/reservations/:id/delivery` | le client précise adresse, zone, date et créneau de livraison avant la préparation. |
 | `POST` | `/api/reservations/:id/dispute` | ouvre un litige ciblé sur un loueur (les autres loueurs ne sont pas impactés). |
 | `GET` | `/api/reservations/:id/modifications` | historique des demandes. |

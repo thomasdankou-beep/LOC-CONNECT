@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Payment, Prisma, ReservationStatus } from "@prisma/client";
+import type { LenderPaymentMode, Payment, Prisma, ReservationStatus } from "@prisma/client";
 import { db, lockReservation, transaction, type Tx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
@@ -12,6 +12,8 @@ import { addBalanceEntry, executeRefund, freezeUntil, recordTransaction } from "
 import { createPaymentRecord } from "./payments";
 import { notifyAdmins, notifyLender, notifyUsers } from "./notifications";
 import { snapshotOf, transitionItems } from "./reservations";
+import { effectivePaymentMode, onlineRentalFor } from "./pricing";
+import { assertCashNotCollected, cashTotalFor, syncCashSettlement } from "./cash";
 
 const MODIFIABLE: ReservationStatus[] = ["PAID", "CONFIRMED", "READY"];
 const OPEN: ("PENDING_VALIDATION" | "ACCEPTED" | "PENDING_PAYMENT" | "PAID" | "REQUESTED")[] = ["REQUESTED", "PENDING_VALIDATION", "ACCEPTED", "PENDING_PAYMENT", "PAID"];
@@ -56,6 +58,10 @@ type PlannedLine = {
   commissionAfter: number;
   depositBefore: number;
   depositAfter: number;
+  /** Mode de paiement du loueur (figé) et part de la location réglée en espèces avant et après. */
+  paymentMode: LenderPaymentMode;
+  cashBefore: number;
+  cashAfter: number;
 };
 
 export type ModificationPlan = {
@@ -67,7 +73,9 @@ export type ModificationPlan = {
   depositAfter: number;
   commissionBefore: number;
   commissionAfter: number;
-  /** Complément à payer : augmentation de la location et de la caution. */
+  cashBefore: number;
+  cashAfter: number;
+  /** Complément à payer en ligne : augmentation de la part en ligne de la location et de la caution. */
   differenceToPay: number;
   /** Remboursement : l'intégralité de la différence en cas de diminution (décision validée). */
   refundToIssue: number;
@@ -82,6 +90,11 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
   const lines: PlannedLine[] = [];
   let lenderId: string | null = null;
   const touched = new Set<string>();
+  const minCash = settings["cash.min_deposit"];
+  // Un loueur déjà présent garde le mode figé sur ses lignes ; sinon son mode actuel s'applique.
+  const modeFor = (lender: { id: string; paymentMode: LenderPaymentMode; cashModeAllowed: boolean }): LenderPaymentMode =>
+    reservation.items.find((i) => i.lenderId === lender.id)?.paymentMode ?? effectivePaymentMode(lender, settings);
+  const cashFor = (subtotal: number, commission: number, mode: LenderPaymentMode) => subtotal - onlineRentalFor(subtotal, commission, mode, minCash);
 
   for (const l of input.lines) {
     if (l.action === "ADD") {
@@ -96,7 +109,8 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
       const subtotal = product.unitPrice * l.quantity * daysBetween(start, end);
       lenderId = lenderId ?? product.lenderId;
       if (lenderId !== product.lenderId) throw new AppError("MODIFICATION_NOT_ALLOWED", "Une demande de modification ne peut concerner qu'un seul loueur.");
-      lines.push({ action: "ADD", productId: product.id, productName: product.name, quantityBefore: 0, quantityAfter: l.quantity, startAfter: start, endAfter: end, unitPrice: product.unitPrice, commissionRateBps: rate, depositUnit: product.depositAmount, refundPrice: product.refundPrice, allowsExtraBilling: product.allowsExtraBilling, subtotalBefore: 0, subtotalAfter: subtotal, commissionBefore: 0, commissionAfter: applyBps(subtotal, rate), depositBefore: 0, depositAfter: product.depositAmount * l.quantity });
+      const mode = modeFor(product.lender);
+      lines.push({ action: "ADD", productId: product.id, productName: product.name, quantityBefore: 0, quantityAfter: l.quantity, startAfter: start, endAfter: end, unitPrice: product.unitPrice, commissionRateBps: rate, depositUnit: product.depositAmount, refundPrice: product.refundPrice, allowsExtraBilling: product.allowsExtraBilling, subtotalBefore: 0, subtotalAfter: subtotal, commissionBefore: 0, commissionAfter: applyBps(subtotal, rate), depositBefore: 0, depositAfter: product.depositAmount * l.quantity, paymentMode: mode, cashBefore: 0, cashAfter: cashFor(subtotal, applyBps(subtotal, rate), mode) });
       continue;
     }
 
@@ -113,7 +127,7 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
     const depositUnit = item.quantity > 0 ? item.depositAmount / item.quantity : 0;
 
     if (l.action === "REMOVE") {
-      lines.push({ action: "REMOVE", itemId: item.id, productId: item.productId, productName: item.productName, quantityBefore: item.quantity, quantityAfter: 0, startBefore: item.startDate, endBefore: item.endDate, unitPrice: item.unitPrice, commissionRateBps: item.commissionRateBps, depositUnit, refundPrice: item.refundPrice, allowsExtraBilling: item.allowsExtraBilling, subtotalBefore: item.subtotal, subtotalAfter: 0, commissionBefore: item.commission, commissionAfter: 0, depositBefore: item.depositAmount, depositAfter: 0 });
+      lines.push({ action: "REMOVE", itemId: item.id, productId: item.productId, productName: item.productName, quantityBefore: item.quantity, quantityAfter: 0, startBefore: item.startDate, endBefore: item.endDate, unitPrice: item.unitPrice, commissionRateBps: item.commissionRateBps, depositUnit, refundPrice: item.refundPrice, allowsExtraBilling: item.allowsExtraBilling, subtotalBefore: item.subtotal, subtotalAfter: 0, commissionBefore: item.commission, commissionAfter: 0, depositBefore: item.depositAmount, depositAfter: 0, paymentMode: item.paymentMode, cashBefore: item.cashDue, cashAfter: 0 });
       continue;
     }
 
@@ -126,17 +140,23 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
     validateRentalPeriod(settings, item.product, { quantity, start, end }, now);
     if (hoursUntil(start, now) < deadlineHours) throw new AppError("MODIFICATION_DEADLINE_EXCEEDED", `La nouvelle date de début doit être au moins ${deadlineHours} h après maintenant.`);
     const subtotal = item.unitPrice * quantity * daysBetween(start, end);
-    lines.push({ action: "UPDATE", itemId: item.id, productId: item.productId, productName: item.productName, quantityBefore: item.quantity, quantityAfter: quantity, startBefore: item.startDate, endBefore: item.endDate, startAfter: start, endAfter: end, unitPrice: item.unitPrice, commissionRateBps: item.commissionRateBps, depositUnit, refundPrice: item.refundPrice, allowsExtraBilling: item.allowsExtraBilling, subtotalBefore: item.subtotal, subtotalAfter: subtotal, commissionBefore: item.commission, commissionAfter: applyBps(subtotal, item.commissionRateBps), depositBefore: item.depositAmount, depositAfter: Math.round(depositUnit * quantity) });
+    const commissionAfter = applyBps(subtotal, item.commissionRateBps);
+    lines.push({ action: "UPDATE", itemId: item.id, productId: item.productId, productName: item.productName, quantityBefore: item.quantity, quantityAfter: quantity, startBefore: item.startDate, endBefore: item.endDate, startAfter: start, endAfter: end, unitPrice: item.unitPrice, commissionRateBps: item.commissionRateBps, depositUnit, refundPrice: item.refundPrice, allowsExtraBilling: item.allowsExtraBilling, subtotalBefore: item.subtotal, subtotalAfter: subtotal, commissionBefore: item.commission, commissionAfter, depositBefore: item.depositAmount, depositAfter: Math.round(depositUnit * quantity), paymentMode: item.paymentMode, cashBefore: item.cashDue, cashAfter: cashFor(subtotal, commissionAfter, item.paymentMode) });
   }
 
   const remaining = reservation.items.filter((i) => !["CANCELLED", "REFUNDED"].includes(i.status) && !input.lines.some((l) => l.action === "REMOVE" && l.itemId === i.id));
   if (remaining.length === 0 && !lines.some((l) => l.action === "ADD")) throw new AppError("MODIFICATION_NOT_ALLOWED", "Pour supprimer toutes les lignes, annulez la réservation.");
 
+  await assertCashNotCollected(tx, reservationId, [lenderId!], "la modification");
+
   const amountBefore = sum(lines.map((l) => l.subtotalBefore));
   const amountAfter = sum(lines.map((l) => l.subtotalAfter));
   const depositBefore = sum(lines.map((l) => l.depositBefore));
   const depositAfter = sum(lines.map((l) => l.depositAfter));
-  const net = amountAfter - amountBefore + (depositAfter - depositBefore);
+  const cashBefore = sum(lines.map((l) => l.cashBefore));
+  const cashAfter = sum(lines.map((l) => l.cashAfter));
+  // Le complément ou le remboursement ne porte que sur ce qui est payé en ligne ; la part en espèces suit au moment de la remise.
+  const net = amountAfter - cashAfter - (amountBefore - cashBefore) + (depositAfter - depositBefore);
   return {
     lenderId: lenderId!,
     lines,
@@ -146,6 +166,8 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
     depositAfter,
     commissionBefore: sum(lines.map((l) => l.commissionBefore)),
     commissionAfter: sum(lines.map((l) => l.commissionAfter)),
+    cashBefore,
+    cashAfter,
     differenceToPay: Math.max(0, net),
     refundToIssue: Math.max(0, -net),
   };
@@ -189,6 +211,8 @@ export async function requestModification(actor: Actor, reservationId: string, i
         depositAfter: plan.depositAfter,
         commissionBefore: plan.commissionBefore,
         commissionAfter: plan.commissionAfter,
+        cashBefore: plan.cashBefore,
+        cashAfter: plan.cashAfter,
         requestedById: actor.userId,
         respondBy: addHours(now, settings["modification.lender_response_hours"]),
         expiresAt,
@@ -207,6 +231,8 @@ export async function requestModification(actor: Actor, reservationId: string, i
             unitPriceAfter: l.unitPrice,
             subtotalBefore: l.subtotalBefore,
             subtotalAfter: l.subtotalAfter,
+            paymentMode: l.paymentMode,
+            cashAfter: l.cashAfter,
           })),
         },
       },
@@ -397,6 +423,8 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
     depositAfter: mod.depositAfter,
     commissionBefore: mod.commissionBefore,
     commissionAfter: mod.commissionAfter,
+    cashBefore: mod.cashBefore,
+    cashAfter: mod.cashAfter,
     differenceToPay: mod.differenceToPay,
     refundToIssue: mod.refundToIssue,
     lines: [],
@@ -415,7 +443,8 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
   const initialPayment = await tx.payment.findFirst({ where: { reservationId: reservation.id, kind: "INITIAL", status: { in: ["PAID", "PARTIALLY_REFUNDED"] } } });
   const deltaCommissionTotal = mod.commissionAfter - mod.commissionBefore;
   const siblingStatus = reservation.items.find((i) => i.lenderId === mod.lenderId && MODIFIABLE.includes(i.status))?.status ?? "CONFIRMED";
-  const deltaRentalTotal = mod.amountAfter - mod.amountBefore;
+  // Variation de la part de location payée en ligne (en mode espèces, le reste est réglé au loueur).
+  const deltaRentalTotal = mod.amountAfter - mod.cashAfter - (mod.amountBefore - mod.cashBefore);
   const deltaDepositTotal = mod.depositAfter - mod.depositBefore;
 
   // 1. Trésorerie : un remboursement n'est dû que si la différence nette est négative.
@@ -435,21 +464,21 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
       const item = reservation.items.find((i) => i.id === line.itemId)!;
       const deposit = await tx.deposit.findUnique({ where: { itemId: item.id } });
       if (deposit) await tx.deposit.update({ where: { id: deposit.id }, data: { status: "RELEASED", releasedAmount: deposit.amount, settledAt: now, reason: "Ligne supprimée par modification" } });
-      await tx.reservationItem.update({ where: { id: item.id }, data: { refundedRental: item.subtotal } });
+      await tx.reservationItem.update({ where: { id: item.id }, data: { refundedRental: item.subtotal - item.cashDue } });
       await transitionItems(tx, reservation.id, "REFUNDED", { actorId, itemIds: [item.id], note: "Ligne supprimée (modification)" });
-      await ledgerDelta(tx, mod.lenderId, reservation.id, item.id, -(item.subtotal - item.commission), refund?.id ?? null, mod.id, "Ligne supprimée");
+      await ledgerDelta(tx, mod.lenderId, reservation.id, item.id, -(item.subtotal - item.cashDue - item.commission), refund?.id ?? null, mod.id, "Ligne supprimée");
     } else if (line.action === "UPDATE" && line.itemId) {
       const item = reservation.items.find((i) => i.id === line.itemId)!;
       const newSubtotal = line.subtotalAfter;
       const newCommission = applyBps(newSubtotal, rate);
       const depositUnit = item.quantity > 0 ? item.depositAmount / item.quantity : 0;
       const newDeposit = Math.round(depositUnit * line.quantityRequested);
-      await tx.reservationItem.update({ where: { id: item.id }, data: { quantity: line.quantityRequested, startDate: line.startAfter!, endDate: line.endAfter!, days: daysBetween(line.startAfter!, line.endAfter!), subtotal: newSubtotal, commission: newCommission, depositAmount: newDeposit } });
+      await tx.reservationItem.update({ where: { id: item.id }, data: { quantity: line.quantityRequested, startDate: line.startAfter!, endDate: line.endAfter!, days: daysBetween(line.startAfter!, line.endAfter!), subtotal: newSubtotal, commission: newCommission, cashDue: line.cashAfter, depositAmount: newDeposit } });
       const deposit = await tx.deposit.findUnique({ where: { itemId: item.id } });
       if (deposit) await tx.deposit.update({ where: { id: deposit.id }, data: { amount: newDeposit, releaseDueDate: new Date(line.endAfter!.getTime() + settings["deposit.release_deadline_days"] * 86_400_000) } });
       const deltaDeposit = newDeposit - item.depositAmount;
       if (deltaDeposit > 0) await recordTransaction(tx, { type: "DEPOSIT_HELD", direction: "INTERNAL", amount: deltaDeposit, paymentId: payment?.id, reservationId: reservation.id, itemId: item.id, lenderId: mod.lenderId, metadata: { reason: "modification" } });
-      await ledgerDelta(tx, mod.lenderId, reservation.id, item.id, newSubtotal - newCommission - (item.subtotal - item.commission), refund?.id ?? null, mod.id, "Modification de la ligne", freezeUntil(line.endAfter!, settings));
+      await ledgerDelta(tx, mod.lenderId, reservation.id, item.id, newSubtotal - line.cashAfter - newCommission - (item.subtotal - item.cashDue - item.commission), refund?.id ?? null, mod.id, "Modification de la ligne", freezeUntil(line.endAfter!, settings));
       await tx.balanceEntry.updateMany({ where: { itemId: item.id, kind: "SALE", payoutId: null }, data: { availableAt: freezeUntil(line.endAfter!, settings) } });
     } else if (line.action === "ADD") {
       const created = await tx.reservationItem.create({
@@ -466,6 +495,8 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
           subtotal: line.subtotalAfter,
           commissionRateBps: rate,
           commission: applyBps(line.subtotalAfter, rate),
+          paymentMode: line.paymentMode,
+          cashDue: line.cashAfter,
           depositAmount: 0,
           refundPrice: (await tx.product.findUniqueOrThrow({ where: { id: line.productId } })).refundPrice,
           allowsExtraBilling: (await tx.product.findUniqueOrThrow({ where: { id: line.productId } })).allowsExtraBilling,
@@ -478,7 +509,7 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
       await tx.deposit.create({ data: { itemId: created.id, amount: newDeposit, status: "HELD", heldAt: now, paymentId: payment?.id, releaseDueDate: new Date(line.endAfter!.getTime() + settings["deposit.release_deadline_days"] * 86_400_000) } });
       await tx.reservationStatusHistory.create({ data: { reservationId: reservation.id, itemId: created.id, toStatus: siblingStatus, actorId, note: "Ligne ajoutée par modification" } });
       if (newDeposit > 0) await recordTransaction(tx, { type: "DEPOSIT_HELD", direction: "INTERNAL", amount: newDeposit, paymentId: payment?.id, reservationId: reservation.id, itemId: created.id, lenderId: mod.lenderId });
-      await ledgerDelta(tx, mod.lenderId, reservation.id, created.id, line.subtotalAfter - applyBps(line.subtotalAfter, rate), null, mod.id, "Ligne ajoutée", freezeUntil(line.endAfter!, settings));
+      await ledgerDelta(tx, mod.lenderId, reservation.id, created.id, line.subtotalAfter - line.cashAfter - applyBps(line.subtotalAfter, rate), null, mod.id, "Ligne ajoutée", freezeUntil(line.endAfter!, settings));
     }
   }
 
@@ -487,17 +518,19 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
     await recordTransaction(tx, { type: "ADJUSTMENT", direction: "INTERNAL", amount: Math.abs(deltaCommissionTotal), paymentId: payment?.id ?? initialPayment?.id, reservationId: reservation.id, lenderId: mod.lenderId, createdById: actorId, metadata: { reason: "Commission (modification)", delta: deltaCommissionTotal } });
   }
   if (payment) {
-    await tx.paymentAllocation.create({ data: { paymentId: payment.id, reservationId: reservation.id, lenderId: mod.lenderId, rentalAmount: Math.max(0, deltaRentalTotal), deliveryAmount: 0, commissionAmount: Math.max(0, deltaCommissionTotal), netAmount: Math.max(0, deltaRentalTotal) - Math.max(0, deltaCommissionTotal), depositAmount: Math.max(0, deltaDepositTotal) } });
+    await tx.paymentAllocation.create({ data: { paymentId: payment.id, reservationId: reservation.id, lenderId: mod.lenderId, rentalAmount: Math.max(0, deltaRentalTotal), deliveryAmount: 0, commissionAmount: Math.max(0, deltaCommissionTotal), netAmount: Math.max(0, deltaRentalTotal) - Math.max(0, deltaCommissionTotal), depositAmount: Math.max(0, deltaDepositTotal), cashAmount: Math.max(0, mod.cashAfter - mod.cashBefore) } });
   }
 
-  // 4. Totaux de la réservation et nouvelle version immuable.
+  // 4. Solde en espèces du loueur, totaux de la réservation et nouvelle version immuable.
+  await syncCashSettlement(tx, reservation.id, mod.lenderId);
+  const cashTotal = await cashTotalFor(tx, reservation.id);
   const fresh = await tx.reservation.findUniqueOrThrow({ where: { id: reservation.id }, include: { items: true } });
   const active = fresh.items.filter((i) => !["CANCELLED", "REFUNDED"].includes(i.status));
   const subtotal = sum(active.map((i) => i.subtotal));
   const depositTotal = sum(active.map((i) => i.depositAmount));
   const commissionTotal = sum(active.map((i) => i.commission)) + (fresh.commissionTotal - sum(reservation.items.filter((i) => !["CANCELLED", "REFUNDED"].includes(i.status)).map((i) => i.commission)));
   const version = fresh.currentVersion + 1;
-  await tx.reservation.update({ where: { id: reservation.id }, data: { subtotal, depositTotal, commissionTotal, total: subtotal + fresh.deliveryFee + depositTotal, currentVersion: version } });
+  await tx.reservation.update({ where: { id: reservation.id }, data: { subtotal, depositTotal, commissionTotal, cashTotal, total: subtotal + fresh.deliveryFee + depositTotal - cashTotal, currentVersion: version } });
   const updated = await tx.reservation.findUniqueOrThrow({ where: { id: reservation.id }, include: { items: true } });
   await tx.reservationVersion.create({ data: { reservationId: reservation.id, version, snapshot: snapshotOf(updated) as Prisma.InputJsonValue, total: updated.total, deposit: updated.depositTotal, commission: updated.commissionTotal, createdById: actorId, modificationId: mod.id } });
   await tx.reservationStatusHistory.create({ data: { reservationId: reservation.id, toStatus: updated.status, actorId, note: `Modification appliquée (version ${version})` } });

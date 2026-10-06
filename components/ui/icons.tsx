@@ -88,6 +88,7 @@ export {
   Siren,
   Stack,
   Wallet,
+  Money,
 } from "@phosphor-icons/react/dist/ssr";
 
 import {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
+import { formatFcfa } from "@/lib/money";
 import { PageShell } from "@/components/layout/page-shell";
 import { Notice } from "@/components/ui/states";
 
@@ -41,6 +42,12 @@ export default async function ConditionsPage() {
       <Section n={4} title="Prix, frais et paiement">
         <p>Les prix sont exprimés en francs CFA (FCFA). Le total d&apos;une commande comprend la location de chaque article, les frais de livraison éventuels de chaque loueur et les cautions. Le client règle l&apos;ensemble en un seul paiement, même lorsque la commande concerne plusieurs loueurs.</p>
         <p>La commission de LOC&apos;CONNECT est prélevée sur la part du loueur et n&apos;ajoute aucun frais au client. Elle est figée au moment de la réservation.</p>
+        <p>
+          <strong>Loueurs payés en espèces.</strong> Certains loueurs, autorisés par LOC&apos;CONNECT, sont payés par « acompte en ligne + solde en espèces ». Pour leurs articles, le client paie en ligne un acompte égal à la commission (au minimum {formatFcfa(s["cash.min_deposit"])} par article) ainsi que la caution, puis règle le solde et la livraison en espèces au loueur, à la remise du matériel. Le mode de paiement est indiqué sur la fiche du produit et dans le panier, et il est figé au moment de la réservation. Dans une même commande, chaque loueur garde son propre mode : le récapitulatif distingue le montant payé en ligne et le montant dû en espèces à chaque loueur.
+        </p>
+        <p>
+          À la remise, le client paie le solde puis communique au loueur son code de remise, visible dans son espace. Le loueur saisit ce code pour confirmer l&apos;encaissement ; le client reçoit alors un reçu. Le client ne doit jamais donner ce code avant d&apos;avoir payé et reçu le matériel. Sans ce code, le loueur ne peut pas marquer le matériel comme remis ou livré. Si le client ne paie pas le solde, le loueur conserve son matériel et le signale : les articles concernés sont annulés, la caution est restituée et l&apos;acompte n&apos;est pas remboursé. La partie payée en espèces est réglée directement entre le client et le loueur : LOC&apos;CONNECT arbitre les litiges qui la concernent, mais ne peut rembourser que les montants payés en ligne. Un solde déjà payé en espèces ne peut plus être annulé en ligne : l&apos;annulation passe alors par le support.
+        </p>
       </Section>
       <Section n={5} title="Caution">
         <p>Chaque article peut être assorti d&apos;une caution fixée par le loueur. Elle est bloquée avec le paiement et gérée séparément pour chaque article et chaque loueur. Après la location, le loueur constate l&apos;état du matériel. Sans dommage, la caution est restituée. En cas de dommage ou de perte, la retenue ne peut pas dépasser la caution, sauf si le produit autorise expressément une facturation complémentaire.</p>

@@ -6,7 +6,9 @@ import { formatDate } from "@/lib/dates";
 import { Photo } from "@/components/ui/photo";
 import { Avatar, Stars } from "@/components/ui/misc";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, ShieldCheck, Truck } from "@/components/ui/icons";
+import { HandCoins, MapPin, ShieldCheck, Truck } from "@/components/ui/icons";
+import { getSettings } from "@/lib/settings";
+import { effectivePaymentMode } from "@/services/pricing";
 import { Pagination } from "@/components/ui/pagination";
 import { ProductCard } from "@/features/catalog/product-card";
 import { searchProducts } from "@/services/catalog";
@@ -32,6 +34,7 @@ export default async function LenderPage({ params, searchParams }: Props) {
     db.review.findMany({ where: { lenderId: lender.id, status: "PUBLISHED" }, include: { client: { select: { firstName: true, lastName: true } }, product: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 6 }),
   ]);
   const isClient = actor?.accountType === "CLIENT";
+  const paymentMode = effectivePaymentMode(lender, await getSettings());
 
   return (
     <div>
@@ -50,6 +53,7 @@ export default async function LenderPage({ params, searchParams }: Props) {
               {lender.reviewCount > 0 && <span>{lender.reviewCount} avis</span>}
               <Badge tone="success"><ShieldCheck size={14} className="mr-1" /> Loueur vérifié</Badge>
               {lender.offersDelivery && <Badge><Truck size={14} className="mr-1" /> Livraison disponible</Badge>}
+              {paymentMode === "DEPOSIT_CASH" ? <Badge tone="warning"><HandCoins size={14} className="mr-1" /> Acompte en ligne + solde en espèces</Badge> : <Badge tone="success"><ShieldCheck size={14} className="mr-1" /> Paiement 100 % protégé</Badge>}
             </p>
           </div>
         </div>

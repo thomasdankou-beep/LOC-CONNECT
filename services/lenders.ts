@@ -183,6 +183,21 @@ export async function updateCompany(actor: LenderActor, input: z.infer<typeof co
   return updated;
 }
 
+export const paymentModeInput = z.object({ paymentMode: z.enum(["ONLINE_FULL", "DEPOSIT_CASH"]) });
+
+/**
+ * Le loueur choisit d'être payé entièrement en ligne ou par acompte en ligne et solde en espèces.
+ * Le mode espèces doit avoir été ouvert par l'administration. Les réservations existantes gardent leur mode.
+ */
+export async function setPaymentMode(actor: LenderActor, input: z.infer<typeof paymentModeInput>) {
+  if (!actor.isLenderOwner && !can(actor, "COMPANY_MANAGE")) throw forbidden();
+  const before = await db.lender.findUniqueOrThrow({ where: { id: actor.lenderId } });
+  if (input.paymentMode === "DEPOSIT_CASH" && !before.cashModeAllowed) throw forbidden("Le paiement en espèces doit d'abord être ouvert pour votre entreprise par LOC'CONNECT.");
+  const updated = await db.lender.update({ where: { id: actor.lenderId }, data: { paymentMode: input.paymentMode } });
+  await audit(db, { userId: actor.userId, lenderId: actor.lenderId, action: "company.payment_mode", entity: "Lender", entityId: actor.lenderId, oldValue: { paymentMode: before.paymentMode }, newValue: input, meta: actor.meta });
+  return updated;
+}
+
 export const payoutDetailsInput = z.object({ method: z.enum(["BANK_TRANSFER", "ORANGE_MONEY", "MTN_MONEY", "MOOV_MONEY", "WAVE"]), account: z.string().trim().min(6).max(60) });
 
 /** Toute modification des coordonnées de versement exige une validation renforcée par l'administration. */

@@ -5,7 +5,7 @@ import { can } from "@/lib/auth/actor";
 import { getSettings } from "@/lib/settings";
 import { pageLender } from "@/lib/auth/page";
 import { AppError } from "@/lib/errors";
-import { formatDate, formatDateTime } from "@/lib/dates";
+import { formatDate, formatDateTime, todayUTC } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { DELIVERY_STATUS, DEPOSIT_STATUS, DISPUTE_STATUS, FULFILLMENT, MODIFICATION_STATUS, RESERVATION_STATUS, RETURN_CONDITION, RETURN_REPORT_STATUS } from "@/lib/labels";
 import { getReservationDetail } from "@/services/reservations";
@@ -18,6 +18,8 @@ import { LinkButton } from "@/components/ui/button";
 import { ArrowLeft, MapPin, Phone, ShieldCheck, Truck } from "@/components/ui/icons";
 import { AdvanceButton, ModificationDecision } from "@/features/lender/reservation-actions";
 import { nextLenderTarget } from "@/features/lender/helpers";
+import { LenderCashBox } from "@/features/cash/cash-cards";
+import { CASH_PERMISSIONS } from "@/services/cash";
 
 export const metadata: Metadata = { title: "Détail de la réservation", robots: { index: false } };
 
@@ -39,6 +41,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const lenderTotal = mine.reduce((a, i) => a + i.subtotal, 0);
   const commission = mine.reduce((a, i) => a + i.commission, 0);
   const delivery = r.deliveries[0];
+  const cash = r.cashSettlements.find((c) => c.status !== "CANCELLED" && c.amountDue > 0);
+  const cashMode = mine.some((i) => i.paymentMode === "DEPOSIT_CASH");
+  const cashDelivery = cash?.deliveryDue ?? 0;
+  const onlineNet = mine.reduce((a, i) => a + i.subtotal - i.cashDue, 0) - commission + (delivery?.fee ?? 0) - cashDelivery;
 
   const groups = (["PAID", "CONFIRMED", "READY"] as const).map((s) => ({ status: s, items: mine.filter((i) => i.status === s) })).filter((g) => g.items.length > 0);
 
@@ -63,6 +69,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
         <div className="space-y-6">
+          {cash && (
+            <LenderCashBox
+              cash={cash}
+              reservationId={r.id}
+              canAct={CASH_PERMISSIONS.some((p) => can(actor, p)) && mine.some((i) => ["CONFIRMED", "READY", "DELIVERING"].includes(i.status))}
+              canReportUnpaid={mine.length > 0 && todayUTC() >= new Date(Math.min(...mine.map((i) => i.startDate.getTime())))}
+            />
+          )}
           {r.modifications.filter((m) => m.status === "PENDING_VALIDATION").map((m) => (
             <Card key={m.id} className="border-warning/40">
               <CardHeader title="Demande de modification à traiter" description={`À traiter avant le ${formatDateTime(m.respondBy)}, sinon elle est transmise à l'administration.`} action={<StatusBadge entry={MODIFICATION_STATUS[m.status]} />} />
@@ -188,8 +202,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <div className="flex justify-between"><dt className="text-muted">Commission LOC&apos;CONNECT</dt><dd><Money value={-commission} /></dd></div>
               {delivery && delivery.fee > 0 && <div className="flex justify-between"><dt className="text-muted">Livraison</dt><dd><Money value={delivery.fee} /></dd></div>}
               <div className="flex justify-between border-t border-line pt-2 font-semibold"><dt>Part nette</dt><dd><Money value={lenderTotal - commission + (delivery?.fee ?? 0)} /></dd></div>
+              {cashMode && (
+                <>
+                  <div className="flex justify-between"><dt className="text-muted">Encaissée en espèces</dt><dd><Money value={mine.reduce((a, i) => a + i.cashDue, 0) + cashDelivery} /></dd></div>
+                  <div className="flex justify-between"><dt className="text-muted">Versée par LOC&apos;CONNECT</dt><dd><Money value={onlineNet} /></dd></div>
+                </>
+              )}
             </dl>
-            <p className="mt-3 text-xs text-muted">Versée {freezeHours} h après la fin de la location, sauf litige ou contestation.</p>
+            <p className="mt-3 text-xs text-muted">{cashMode ? "Acompte en ligne + solde en espèces : la commission est déjà prélevée sur l'acompte. " : ""}{!cashMode || onlineNet > 0 ? `Versée ${freezeHours} h après la fin de la location, sauf litige ou contestation.` : ""}</p>
           </Card>
           <Card className="p-5">
             <h2 className="text-base font-semibold text-ink">Suivi</h2>

@@ -9,7 +9,9 @@ import { Card } from "@/components/ui/card";
 import { Photo } from "@/components/ui/photo";
 import { EmptyState, Notice } from "@/components/ui/states";
 import { LinkButton } from "@/components/ui/button";
-import { ShoppingCart, Storefront, ShieldCheck, WarningCircle } from "@/components/ui/icons";
+import { HandCoins, ShoppingCart, Storefront, ShieldCheck, WarningCircle } from "@/components/ui/icons";
+import { Badge } from "@/components/ui/badge";
+import { PAYMENT_MODE } from "@/lib/labels";
 import { CartLineControls } from "@/features/cart/cart-line-controls";
 
 export const metadata: Metadata = { title: "Mon panier", robots: { index: false } };
@@ -54,7 +56,7 @@ export default async function CartPage() {
           {cart.groups.map((g) => (
             <Card key={g.lenderId} className="overflow-hidden">
               <div className="flex items-center justify-between gap-3 border-b border-line bg-surface-2/50 px-5 py-3.5">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-ink"><Storefront size={18} className="text-royal-ink" /> {g.lenderName}</h2>
+                <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold text-ink"><Storefront size={18} className="text-royal-ink" /> {g.lenderName} <Badge tone={g.paymentMode === "DEPOSIT_CASH" ? "warning" : "success"}>{PAYMENT_MODE[g.paymentMode].short}</Badge></h2>
                 <p className="text-sm text-muted">Sous-total <span className="font-semibold tabular-nums text-ink">{formatFcfa(g.subtotal)}</span></p>
               </div>
               <ul className="divide-y divide-line">
@@ -82,6 +84,12 @@ export default async function CartPage() {
                   </li>
                 ))}
               </ul>
+              {g.cash > 0 && (
+                <p className="flex items-start gap-2 border-t border-line bg-warn-soft/40 px-5 py-3 text-sm text-ink">
+                  <HandCoins size={18} className="mt-0.5 shrink-0 text-royal-ink" />
+                  <span>Ce loueur est payé en espèces : vous payez en ligne un acompte de <strong className="tabular-nums">{formatFcfa(g.subtotal - g.cash)}</strong> et la caution, puis <strong className="tabular-nums">{formatFcfa(g.cash)}</strong> en espèces à la remise du matériel.</span>
+                </p>
+              )}
             </Card>
           ))}
         </div>
@@ -108,8 +116,14 @@ export default async function CartPage() {
                 <dt className="text-muted">Livraison</dt>
                 <dd className="text-ink">Choisie à l&apos;étape suivante</dd>
               </div>
+              {cart.cash > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-muted">En espèces aux loueurs</dt>
+                  <dd className="tabular-nums text-ink">- {formatFcfa(cart.cash)}</dd>
+                </div>
+              )}
               <div className="flex justify-between border-t border-line pt-3 text-base font-semibold">
-                <dt className="text-ink">Total estimé</dt>
+                <dt className="text-ink">{cart.cash > 0 ? "À payer en ligne (estimé)" : "Total estimé"}</dt>
                 <dd className="tabular-nums text-ink">{formatFcfa(cart.total)}</dd>
               </div>
             </dl>

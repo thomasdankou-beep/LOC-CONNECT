@@ -9,10 +9,10 @@ import { formatDate } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Notice, Skeleton } from "@/components/ui/states";
-import { ClockCountdown, CreditCard, ShieldCheck, Wallet } from "@/components/ui/icons";
+import { ClockCountdown, CreditCard, HandCoins, ShieldCheck, Wallet } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 
-type Item = { id: string; productName: string; quantity: number; startDate: string; endDate: string; subtotal: number; depositAmount: number; lender: { id: string; companyName: string } };
+type Item = { id: string; productName: string; quantity: number; startDate: string; endDate: string; subtotal: number; depositAmount: number; paymentMode: "ONLINE_FULL" | "DEPOSIT_CASH"; cashDue: number; lender: { id: string; companyName: string } };
 type Reservation = {
   id: string;
   reference: string;
@@ -20,10 +20,12 @@ type Reservation = {
   subtotal: number;
   deliveryFee: number;
   depositTotal: number;
+  cashTotal: number;
   total: number;
   fulfillmentType: "PICKUP" | "DELIVERY";
   items: Item[];
   deliveries: { lenderId: string; fee: number }[];
+  cashSettlements: { lenderId: string; amountDue: number; deliveryDue: number; status: string }[];
 };
 
 const METHODS = [
@@ -78,9 +80,9 @@ export function PaymentPanel({ holdId, secondsLeft }: { holdId: string; secondsL
   const ss = String(Math.max(0, left % 60)).padStart(2, "0");
 
   const grouped = useMemo(() => {
-    const map = new Map<string, { name: string; items: Item[]; delivery: number }>();
+    const map = new Map<string, { name: string; items: Item[]; delivery: number; cash: number }>();
     for (const i of reservation?.items ?? []) {
-      const g = map.get(i.lender.id) ?? { name: i.lender.companyName, items: [], delivery: reservation?.deliveries.find((d) => d.lenderId === i.lender.id)?.fee ?? 0 };
+      const g = map.get(i.lender.id) ?? { name: i.lender.companyName, items: [], delivery: reservation?.deliveries.find((d) => d.lenderId === i.lender.id)?.fee ?? 0, cash: reservation?.cashSettlements.find((c) => c.lenderId === i.lender.id && c.status === "PENDING")?.amountDue ?? 0 };
       g.items.push(i);
       map.set(i.lender.id, g);
     }
@@ -179,6 +181,9 @@ export function PaymentPanel({ holdId, secondsLeft }: { holdId: string; secondsL
             </div>
             <Button size="lg" className="mt-6 w-full" loading={busy} onClick={pay}>Payer {formatFcfa(reservation.total)}</Button>
             <p className="mt-3 flex items-center gap-1.5 text-xs text-muted"><ShieldCheck size={14} /> Paiement unique, réparti automatiquement entre les loueurs.</p>
+            {reservation.cashTotal > 0 && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-muted"><HandCoins size={14} className="mt-0.5 shrink-0" /> Vous réglerez en plus {formatFcfa(reservation.cashTotal)} en espèces, directement aux loueurs concernés, à la remise du matériel.</p>
+            )}
           </Card>
         ) : (
           <Card className="border-royal/40 p-6">
@@ -208,6 +213,7 @@ export function PaymentPanel({ holdId, secondsLeft }: { holdId: string; secondsL
                     </li>
                   ))}
                   {g.delivery > 0 && <li className="flex justify-between text-muted"><span>Livraison</span><span className="tabular-nums text-ink">{formatFcfa(g.delivery)}</span></li>}
+                  {g.cash > 0 && <li className="flex justify-between gap-3 rounded-control bg-warn-soft/60 px-2 py-1 text-ink"><span>En espèces à la remise</span><span className="shrink-0 tabular-nums">{formatFcfa(g.cash)}</span></li>}
                 </ul>
               </li>
             ))}
@@ -216,7 +222,8 @@ export function PaymentPanel({ holdId, secondsLeft }: { holdId: string; secondsL
             <div className="flex justify-between"><dt className="text-muted">Locations</dt><dd className="tabular-nums">{formatFcfa(reservation.subtotal)}</dd></div>
             {reservation.deliveryFee > 0 && <div className="flex justify-between"><dt className="text-muted">Livraison</dt><dd className="tabular-nums">{formatFcfa(reservation.deliveryFee)}</dd></div>}
             <div className="flex justify-between"><dt className="text-muted">Cautions</dt><dd className="tabular-nums">{formatFcfa(reservation.depositTotal)}</dd></div>
-            <div className="flex justify-between border-t border-line pt-3 text-base font-semibold"><dt>Total</dt><dd className="tabular-nums">{formatFcfa(reservation.total)}</dd></div>
+            {reservation.cashTotal > 0 && <div className="flex justify-between"><dt className="text-muted">En espèces aux loueurs</dt><dd className="tabular-nums">- {formatFcfa(reservation.cashTotal)}</dd></div>}
+            <div className="flex justify-between border-t border-line pt-3 text-base font-semibold"><dt>{reservation.cashTotal > 0 ? "À payer en ligne" : "Total"}</dt><dd className="tabular-nums">{formatFcfa(reservation.total)}</dd></div>
           </dl>
         </Card>
       </aside>

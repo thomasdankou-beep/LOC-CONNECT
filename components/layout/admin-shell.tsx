@@ -1,21 +1,24 @@
 import type { ReactNode } from "react";
 import { db } from "@/lib/db";
+import { getSettings } from "@/lib/settings";
 import { can, type Actor } from "@/lib/auth/actor";
 import { DashboardShell } from "./dashboard-shell";
 import type { NavGroup } from "./sidebar-nav";
-import { ArrowCounterClockwise, Bank, Bell, Envelope, CalendarCheck, ChartLineUp, ClipboardText, CreditCard, Gauge, GearSix, HandCoins, IdentificationCard, Key, MapPin, Package, Percent, Receipt, Scales, ShieldCheck, Siren, Stack, Star, Tag, Truck, Users, Wallet, ArrowsClockwise, Storefront } from "@/components/ui/icons";
+import { ArrowCounterClockwise, Bank, Bell, Envelope, CalendarCheck, ChartLineUp, ClipboardText, CreditCard, Gauge, GearSix, HandCoins, IdentificationCard, Key, MapPin, Package, Percent, Receipt, Scales, ShieldCheck, Siren, Stack, Star, Tag, Truck, Users, Wallet, ArrowsClockwise, Storefront, Money } from "@/components/ui/icons";
 
 type Item = NavGroup["items"][number] & { perm?: string };
 
 /** Navigation de l'administration, filtrée par permission. Les pastilles signalent le travail en attente. */
 export async function AdminShell({ actor, children }: { actor: Actor; children: ReactNode }) {
-  const [pendingLenders, pendingProducts, escalations, openDisputes, validations, newMessages] = await Promise.all([
+  const maxAttempts = (await getSettings())["cash.max_code_attempts"];
+  const [pendingLenders, pendingProducts, escalations, openDisputes, validations, newMessages, lockedCash] = await Promise.all([
     can(actor, "ADMIN_LENDERS") ? db.lender.count({ where: { status: "PENDING" } }) : 0,
     can(actor, "ADMIN_PRODUCTS") ? db.product.count({ where: { status: "PENDING_REVIEW", deletedAt: null } }) : 0,
     can(actor, "ADMIN_MODIFICATIONS") ? db.modificationRequest.count({ where: { status: "PENDING_VALIDATION", escalatedAt: { not: null } } }) : 0,
     can(actor, "ADMIN_DISPUTES") ? db.dispute.count({ where: { status: { in: ["OPEN", "UNDER_REVIEW"] } } }) : 0,
     can(actor, "ADMIN_PAYOUTS") ? db.validationAction.count({ where: { status: "PENDING" } }) : 0,
     can(actor, "ADMIN_NOTIFICATIONS") ? db.contactMessage.count({ where: { handled: false } }) : 0,
+    can(actor, "ADMIN_PAYMENTS") ? db.cashSettlement.count({ where: { status: "PENDING", failedAttempts: { gte: maxAttempts } } }) : 0,
   ]);
   const groups: { title?: string; items: Item[] }[] = [
     { items: [{ href: "/admin", label: "Tableau de bord", icon: <Gauge size={20} />, exact: true, perm: "ADMIN_DASHBOARD" }] },
@@ -45,6 +48,7 @@ export async function AdminShell({ actor, children }: { actor: Actor; children: 
       title: "Finance",
       items: [
         { href: "/admin/paiements", label: "Paiements", icon: <CreditCard size={20} />, perm: "ADMIN_PAYMENTS" },
+        { href: "/admin/especes", label: "Paiements en espèces", icon: <Money size={20} />, perm: "ADMIN_PAYMENTS", badge: lockedCash },
         { href: "/admin/remboursements", label: "Remboursements", icon: <Receipt size={20} />, perm: "ADMIN_REFUNDS" },
         { href: "/admin/commissions", label: "Commissions", icon: <Percent size={20} />, perm: "ADMIN_COMMISSIONS" },
         { href: "/admin/cautions", label: "Cautions", icon: <ShieldCheck size={20} />, perm: "ADMIN_DEPOSITS" },

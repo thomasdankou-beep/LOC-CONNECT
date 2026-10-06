@@ -7,7 +7,7 @@ import { AppError } from "@/lib/errors";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { CANCELLABLE_STATUSES, DISPUTABLE_STATUSES } from "@/lib/state-machine";
-import { DELIVERY_STATUS, DEPOSIT_STATUS, EXTRA_CHARGE_STATUS, FULFILLMENT, MODIFICATION_STATUS, PAYMENT_METHOD, PAYMENT_STATUS, REFUND_STATUS, RESERVATION_STATUS, RETURN_CONDITION, RETURN_REPORT_STATUS, DISPUTE_STATUS } from "@/lib/labels";
+import { DELIVERY_STATUS, DEPOSIT_STATUS, EXTRA_CHARGE_STATUS, FULFILLMENT, MODIFICATION_STATUS, PAYMENT_METHOD, PAYMENT_STATUS, REFUND_STATUS, RESERVATION_STATUS, RETURN_CONDITION, RETURN_REPORT_STATUS, DISPUTE_STATUS, PAYMENT_MODE } from "@/lib/labels";
 import { getReservationDetail } from "@/services/reservations";
 import { Card, CardHeader } from "@/components/ui/card";
 import { StatusBadge, Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import { ArrowLeft, Phone, ShieldCheck, Truck, MapPin } from "@/components/ui/ic
 import { AuxPaymentButton } from "@/features/reservations/aux-payment";
 import { CancelButton, DisputeButton, ModificationButton, ReturnReportActions, ReviewButton } from "@/features/reservations/client-actions";
 import { nextActionForClient } from "@/features/reservations/helpers";
+import { ClientCashBox } from "@/features/cash/cash-cards";
 
 
 export const metadata: Metadata = { title: "Détail de la réservation", robots: { index: false } };
@@ -45,6 +46,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
   const disputable = r.items.some((i) => DISPUTABLE_STATUSES.includes(i.status));
   const hold = r.holdId && ["HOLD", "PENDING_PAYMENT"].includes(r.status) ? await db.hold.findFirst({ where: { id: r.holdId, status: "ACTIVE", expiresAt: { gt: new Date() } } }) : null;
   const initialPayment = r.payments.find((p) => p.kind === "INITIAL");
+  const paidOnline = initialPayment ? ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"].includes(initialPayment.status) : false;
 
   return (
     <>
@@ -77,11 +79,13 @@ export default async function ReservationDetailPage({ params }: { params: Promis
           {[...byLender.entries()].map(([lenderId, items]) => {
             const lender = items[0].lender;
             const delivery = r.deliveries.find((d) => d.lenderId === lenderId);
+            const cash = r.cashSettlements.find((c) => c.lenderId === lenderId && c.status !== "CANCELLED");
             return (
               <Card key={lenderId}>
                 <CardHeader
                   title={<Link href={`/loueurs/${lender.slug}`} className="hover:underline">{lender.companyName}</Link>}
                   description={lender.phone ? <span className="inline-flex items-center gap-1.5"><Phone size={14} /> {lender.phone}</span> : undefined}
+                  action={<Badge tone={items[0].paymentMode === "DEPOSIT_CASH" ? "warning" : "success"}>{PAYMENT_MODE[items[0].paymentMode].short}</Badge>}
                 />
                 <ul className="divide-y divide-line">
                   {items.map((i) => {
@@ -97,7 +101,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
                               <StatusBadge entry={RESERVATION_STATUS[i.status]} />
                             </div>
                             <p className="mt-1 text-sm text-muted">Du {formatDate(i.startDate)} au {formatDate(i.endDate)} ({i.days} jour{i.days > 1 ? "s" : ""}) · {formatFcfa(i.unitPrice)} par jour</p>
-                            <p className="mt-0.5 text-sm font-medium tabular-nums text-ink">{formatFcfa(i.subtotal)}</p>
+                            <p className="mt-0.5 text-sm font-medium tabular-nums text-ink">{formatFcfa(i.subtotal)}{i.cashDue > 0 && <span className="font-normal text-muted"> · acompte en ligne {formatFcfa(i.subtotal - i.cashDue)}, solde en espèces {formatFcfa(i.cashDue)}</span>}</p>
                             <p className="mt-1 text-sm text-royal-ink">{nextActionForClient(i.status, { fulfillment: r.fulfillmentType, extraChargePending: pendingExtra.length > 0, contestable: report?.status === "SUBMITTED" && Boolean(report.contestDeadline && report.contestDeadline > new Date()) })}</p>
 
                             {i.deposit && (
@@ -151,6 +155,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
                     );
                   })}
                 </ul>
+                {cash && <ClientCashBox cash={cash} paid={paidOnline} />}
                 {delivery && delivery.type === "DELIVERY" && (
                   <div className="border-t border-line bg-surface-2/40 px-5 py-4 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -206,7 +211,14 @@ export default async function ReservationDetailPage({ params }: { params: Promis
               <div className="flex justify-between"><dt className="text-muted">Locations</dt><dd><Money value={r.subtotal} /></dd></div>
               {r.deliveryFee > 0 && <div className="flex justify-between"><dt className="text-muted">Livraison</dt><dd><Money value={r.deliveryFee} /></dd></div>}
               <div className="flex justify-between"><dt className="text-muted">Cautions</dt><dd><Money value={r.depositTotal} /></dd></div>
-              <div className="flex justify-between border-t border-line pt-2 text-base font-semibold"><dt>Total</dt><dd><Money value={r.total} /></dd></div>
+              {r.cashTotal > 0 ? (
+                <>
+                  <div className="flex justify-between border-t border-line pt-2 text-base font-semibold"><dt>Payé en ligne</dt><dd><Money value={r.total} /></dd></div>
+                  <div className="flex justify-between font-semibold"><dt>En espèces aux loueurs</dt><dd><Money value={r.cashTotal} /></dd></div>
+                </>
+              ) : (
+                <div className="flex justify-between border-t border-line pt-2 text-base font-semibold"><dt>Total</dt><dd><Money value={r.total} /></dd></div>
+              )}
             </dl>
           </Card>
 

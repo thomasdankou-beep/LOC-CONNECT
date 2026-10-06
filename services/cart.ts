@@ -4,8 +4,8 @@ import { AppError, notFound } from "@/lib/errors";
 import { parseDate, daysBetween } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { availabilityForProduct, minAvailable, validateRentalPeriod } from "./availability";
-import { priceLine } from "./pricing";
-import { applyBps } from "@/lib/money";
+import { effectivePaymentMode, priceLine } from "./pricing";
+import type { LenderPaymentMode } from "@prisma/client";
 
 export const cartItemInput = z.object({
   productId: z.string().min(1),
@@ -16,7 +16,7 @@ export const cartItemInput = z.object({
 export type CartItemInput = z.infer<typeof cartItemInput>;
 
 const itemInclude = {
-  product: { include: { photos: { orderBy: { position: "asc" as const }, take: 1 }, lender: { select: { id: true, slug: true, companyName: true, commissionRateBps: true, status: true, cityId: true, offersDelivery: true, deliveryFeeLocal: true, deliveryFeeRemote: true } } } },
+  product: { include: { photos: { orderBy: { position: "asc" as const }, take: 1 }, lender: { select: { id: true, slug: true, companyName: true, commissionRateBps: true, status: true, cityId: true, offersDelivery: true, deliveryFeeLocal: true, deliveryFeeRemote: true, paymentMode: true, cashModeAllowed: true } } } },
 };
 
 async function ensureCart(userId: string) {
@@ -99,15 +99,21 @@ export type CartLineView = {
   subtotal: number;
   commission: number;
   deposit: number;
+  paymentMode: LenderPaymentMode;
+  /** Part de la location à régler en espèces au loueur. */
+  cashDue: number;
   available: number;
   ok: boolean;
 };
 
 export type CartView = {
   lines: CartLineView[];
-  groups: { lenderId: string; lenderName: string; lines: CartLineView[]; subtotal: number; deposit: number }[];
+  groups: { lenderId: string; lenderName: string; lines: CartLineView[]; subtotal: number; deposit: number; paymentMode: LenderPaymentMode; cash: number }[];
   subtotal: number;
   deposit: number;
+  /** Total à régler en espèces aux loueurs (hors livraison). */
+  cash: number;
+  /** Total payé en ligne (hors livraison). */
   total: number;
   itemCount: number;
   issues: number;
@@ -121,7 +127,8 @@ export async function getCart(userId: string): Promise<CartView> {
   for (const item of cart?.items ?? []) {
     const p = item.product;
     const rate = p.lender.commissionRateBps ?? settings["commission.rate_bps"];
-    const priced = priceLine({ productId: p.id, lenderId: p.lenderId, quantity: item.quantity, start: item.startDate, end: item.endDate, unitPrice: p.unitPrice, depositAmount: p.depositAmount, refundPrice: p.refundPrice, commissionRateBps: rate });
+    const paymentMode = effectivePaymentMode(p.lender, settings);
+    const priced = priceLine({ productId: p.id, lenderId: p.lenderId, quantity: item.quantity, start: item.startDate, end: item.endDate, unitPrice: p.unitPrice, depositAmount: p.depositAmount, refundPrice: p.refundPrice, commissionRateBps: rate, paymentMode, minCashDeposit: settings["cash.min_deposit"] });
     const days = await availabilityForProduct(db, p.id, item.startDate, item.endDate);
     const free = minAvailable(days);
     const sellable = p.status === "PUBLISHED" && !p.deletedAt && p.lender.status === "APPROVED";
@@ -139,28 +146,33 @@ export async function getCart(userId: string): Promise<CartView> {
       days: daysBetween(item.startDate, item.endDate),
       unitPrice: p.unitPrice,
       subtotal: priced.subtotal,
-      commission: applyBps(priced.subtotal, rate),
+      commission: priced.commission,
       deposit: priced.deposit,
+      paymentMode,
+      cashDue: priced.cashDue,
       available: free,
       ok: sellable && item.quantity <= free,
     });
   }
   const groupsMap = new Map<string, CartView["groups"][number]>();
   for (const l of lines) {
-    const g = groupsMap.get(l.lenderId) ?? { lenderId: l.lenderId, lenderName: l.lenderName, lines: [], subtotal: 0, deposit: 0 };
+    const g = groupsMap.get(l.lenderId) ?? { lenderId: l.lenderId, lenderName: l.lenderName, lines: [], subtotal: 0, deposit: 0, paymentMode: l.paymentMode, cash: 0 };
     g.lines.push(l);
     g.subtotal += l.subtotal;
     g.deposit += l.deposit;
+    g.cash += l.cashDue;
     groupsMap.set(l.lenderId, g);
   }
   const subtotal = lines.reduce((a, l) => a + l.subtotal, 0);
   const deposit = lines.reduce((a, l) => a + l.deposit, 0);
+  const cash = lines.reduce((a, l) => a + l.cashDue, 0);
   return {
     lines,
     groups: [...groupsMap.values()],
     subtotal,
     deposit,
-    total: subtotal + deposit,
+    cash,
+    total: subtotal + deposit - cash,
     itemCount: lines.reduce((a, l) => a + l.quantity, 0),
     issues: lines.filter((l) => !l.ok).length,
   };

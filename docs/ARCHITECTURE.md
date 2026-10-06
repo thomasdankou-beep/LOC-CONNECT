@@ -37,6 +37,19 @@ Règle structurante : **les pages serveur et les routes API appellent les mêmes
 - `LenderReimbursement` : suivi du recouvrement quand un remboursement concerne un loueur déjà versé (compensé sur le prochain versement ou recouvré manuellement).
 - Les versements sont nets des déductions ; aucun versement si le solde net est nul ou négatif.
 
+## Paiement en espèces (acompte en ligne + solde au loueur)
+
+Chaque loueur choisit son mode (`Lender.paymentMode`) : `ONLINE_FULL` (tout en ligne) ou `DEPOSIT_CASH`. Le mode espèces exige l'option globale `cash.enabled` et l'autorisation de l'administration (`Lender.cashModeAllowed`).
+
+- **Figé par ligne** : `ReservationItem.paymentMode` et `cashDue` sont fixés à la réservation, comme la commission. Changer de mode n'affecte pas les commandes en cours.
+- **Calcul** (`services/pricing.ts`) : pour une ligne en espèces, la part en ligne vaut `min(location, max(commission, cash.min_deposit))` ; le reste (`cashDue`) est réglé au loueur. En mode espèces, la livraison est aussi réglée au loueur (sauf sa commission éventuelle). La caution reste **toujours en ligne**.
+- **Facture mixte** : un seul paiement en ligne (`Reservation.total`) couvre les loueurs en ligne en totalité et, pour les loueurs en espèces, l'acompte et la caution. `Reservation.cashTotal` est la somme due en espèces.
+- **Solde par loueur** : `CashSettlement` (une ligne par réservation et par loueur) porte le montant dû, la part livraison, un **code de remise** à 4 chiffres visible du client seulement, le nombre d'essais erronés et le statut (`PENDING`, `PAID`, `UNPAID`, `CANCELLED`).
+- **Remise** : le loueur saisit le code donné par le client pour confirmer l'encaissement ; sans cela, `IN_USE` (retrait) et `DELIVERED` (livraison) sont refusés (`CASH_NOT_CONFIRMED`). Après `cash.max_code_attempts` codes erronés, la saisie est bloquée jusqu'à l'intervention du support.
+- **Impayé** : à partir du premier jour de location, le loueur peut signaler que le client n'a pas payé. Ses lignes sont annulées, la caution est restituée, l'acompte est conservé (la part au-delà de la commission reste au loueur), l'administration est prévenue.
+- **Annulation et modification** : seule la part en ligne est remboursée ou complétée ; le solde en espèces est recalculé ou annulé. Une fois le solde payé en espèces, l'annulation et la modification en ligne sont refusées (traitement par le support).
+- **Finance** : `PaymentAllocation.cashAmount` trace la part hors paiement ; aucune écriture de solde n'est créée pour l'argent encaissé directement par le loueur.
+
 ## Caution et retour
 
 Une caution par ligne. Le constat de retour impose `retourné + perdu = loué`. La retenue est `min(pertes × prix de remboursement + dommages déclarés, caution)` ; l'excédent n'est facturable que si le produit l'autorise (`allowsExtraBilling`). Sans dommage, la caution est libérée immédiatement ; sinon le client a `return.contest_window_hours` pour contester, passé ce délai le constat est réglé automatiquement. Les photos de preuve sont **privées** : servies par `/api/files/private/…` avec contrôle d'accès.

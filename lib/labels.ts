@@ -1,5 +1,7 @@
 import type {
   BalanceEntryKind,
+  CashSettlementStatus,
+  LenderPaymentMode,
   DeliveryStatus,
   DepositStatus,
   DisputeStatus,
@@ -176,4 +178,16 @@ export const PAYOUT_METHOD: Record<string, string> = {
   MTN_MONEY: "MTN Money",
   MOOV_MONEY: "Moov Money",
   WAVE: "Wave",
+};
+
+export const PAYMENT_MODE: Record<LenderPaymentMode, { label: string; short: string; description: string }> = {
+  ONLINE_FULL: { label: "Paiement 100 % en ligne", short: "100 % en ligne", description: "Le client paie tout en ligne. Paiement protégé par LOC'CONNECT jusqu'au retour du matériel." },
+  DEPOSIT_CASH: { label: "Acompte en ligne + solde en espèces", short: "Acompte + espèces", description: "Le client paie en ligne un acompte et la caution, puis le solde en espèces au loueur à la remise du matériel." },
+};
+
+export const CASH_STATUS: Record<CashSettlementStatus, Entry> = {
+  PENDING: { label: "À payer à la remise", tone: "warning" },
+  PAID: { label: "Payé en espèces", tone: "success" },
+  UNPAID: { label: "Signalé impayé", tone: "danger" },
+  CANCELLED: { label: "Annulé", tone: "neutral" },
 };

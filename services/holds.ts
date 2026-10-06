@@ -43,6 +43,7 @@ export async function expireHolds(now = new Date()): Promise<number> {
       await tx.payment.updateMany({ where: { reservationId: r.id, status: "PENDING" }, data: { status: "CANCELLED", failureReason: "HOLD expiré" } });
       await tx.reservationStatusHistory.create({ data: { reservationId: r.id, fromStatus: r.status, toStatus: "CANCELLED", note: "HOLD expiré" } });
       await tx.delivery.deleteMany({ where: { reservationId: r.id } });
+      await tx.cashSettlement.updateMany({ where: { reservationId: r.id, status: "PENDING" }, data: { status: "CANCELLED" } });
     }
   });
   return ids.length;
@@ -152,6 +153,7 @@ export async function releaseHold(userId: string, holdId: string, meta: RequestM
       await tx.reservationItem.updateMany({ where: { reservationId: draft.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
       await tx.reservation.update({ where: { id: draft.id }, data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: "Blocage de stock libéré par le client." } });
       await tx.delivery.deleteMany({ where: { reservationId: draft.id } });
+      await tx.cashSettlement.updateMany({ where: { reservationId: draft.id, status: "PENDING" }, data: { status: "CANCELLED" } });
     }
     await audit(tx, { userId, action: "hold.release", entity: "Hold", entityId: holdId, meta });
   });

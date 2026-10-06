@@ -11,6 +11,7 @@ Application complète et fonctionnelle (pas une maquette) : Next.js 16 / React 1
 | Catalogue | Catégories et sous-catégories, villes, recherche, filtres, tri, pagination, fiche produit avec calendrier de disponibilité réelle, pages loueur, favoris, avis |
 | Réservation | Panier multi-loueurs, **HOLD** de stock à durée configurable, paiement unique réparti par loueur, retrait ou livraison par loueur |
 | Paiement | Fournisseur abstrait, webhook signé (HMAC-SHA256), idempotence, paiement tardif remboursé automatiquement. **Fournisseur « simulé » par défaut : aucun argent réel n'est déplacé** |
+| Paiement en espèces | Par loueur, sur autorisation de l'administration : **acompte en ligne** (la commission, avec un minimum) et caution en ligne, **solde en espèces** à la remise, confirmé par un **code de remise** donné par le client. Mode figé par ligne, factures mixtes en ligne + espèces, signalement d'impayé, déblocage par le support |
 | Caution et retour | Une caution **par ligne**, constat de retour (retourné / perdu / endommagé, photos privées), fenêtre de contestation, retenue plafonnée, complément de facturation optionnel |
 | Annulation et remboursement | Politique par paliers configurable, annulation ligne par ligne, aperçu exact avant confirmation, déduction du solde du loueur ou recouvrement s'il a déjà été versé |
 | Modification de réservation | Demande validée par le loueur (réponse sous 2 h par défaut, sinon escalade à l'administration), complément payé séparément, baisse remboursée |
@@ -46,6 +47,7 @@ Mot de passe commun : `Demo2026!Loc` (modifiable via `SEED_DEMO_PASSWORD`). Doma
 | Admin support, finance, modération, stock | `support@`, `finance@`, `moderation@`, `stock@` |
 | Clients | `client01@` à `client12@` |
 | Loueurs (propriétaires) | `loueur01@` à `loueur16@` (`loueur16` est en attente de validation) |
+| Loueur payé en espèces | `loueur02@` (acompte en ligne + solde en espèces ; `client01` a une réservation mixte à venir) |
 | Sous-comptes de `loueur01` | `stock.loueur01@`, `commandes.loueur01@`, `finance.loueur01@`, `livraison.loueur01@`, `retours.loueur01@` |
 
 Les jeux de données contiennent 10 catégories, 20 sous-catégories, 10 villes, 16 loueurs, plus de 50 produits, des réservations à tous les états, des paiements, cautions, livraisons, litiges, avis et un recouvrement.

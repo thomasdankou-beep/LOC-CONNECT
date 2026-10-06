@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Notice } from "@/components/ui/states";
-import { CheckCircle, ClipboardText, Truck, Storefront } from "@/components/ui/icons";
+import { CheckCircle, ClipboardText, HandCoins, Truck, Storefront } from "@/components/ui/icons";
 import { CheckoutSteps } from "@/features/checkout/steps";
 
 export const metadata: Metadata = { title: "Réservation confirmée", robots: { index: false } };
@@ -21,6 +21,7 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
   if (!actor) redirect("/connexion");
   if (!id) redirect("/mes-reservations");
   const { reservation: r } = await getReservationDetail(actor, id).catch(() => redirect("/mes-reservations"));
+  const cash = r.cashSettlements.filter((c) => c.status === "PENDING" && c.amountDue > 0);
   const paid = r.payments.find((p) => p.kind === "INITIAL" && p.status !== "PENDING" && p.status !== "FAILED" && p.status !== "CANCELLED");
 
   return (
@@ -57,9 +58,27 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
           <div className="flex justify-between"><dt className="text-muted">Locations</dt><dd className="tabular-nums">{formatFcfa(r.subtotal)}</dd></div>
           {r.deliveryFee > 0 && <div className="flex justify-between"><dt className="text-muted">Livraison</dt><dd className="tabular-nums">{formatFcfa(r.deliveryFee)}</dd></div>}
           <div className="flex justify-between"><dt className="text-muted">Cautions</dt><dd className="tabular-nums">{formatFcfa(r.depositTotal)}</dd></div>
-          <div className="flex justify-between text-base font-semibold"><dt>Total payé</dt><dd className="tabular-nums">{formatFcfa(r.total)}</dd></div>
+          <div className="flex justify-between text-base font-semibold"><dt>{r.cashTotal > 0 ? "Payé en ligne" : "Total payé"}</dt><dd className="tabular-nums">{formatFcfa(r.total)}</dd></div>
+          {r.cashTotal > 0 && <div className="flex justify-between text-base font-semibold"><dt>Reste à payer en espèces</dt><dd className="tabular-nums">{formatFcfa(r.cashTotal)}</dd></div>}
         </dl>
       </Card>
+
+      {cash.length > 0 && (
+        <Card className="mt-6 p-6">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-ink"><HandCoins size={22} className="text-royal-ink" /> À payer en espèces à la remise</h2>
+          <ul className="mt-4 space-y-3">
+            {cash.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-line px-4 py-3">
+                <div>
+                  <p className="font-medium text-ink">{c.lender.companyName} : {formatFcfa(c.amountDue)}</p>
+                  {paid && typeof c.code === "string" && <p className="text-sm text-muted">Code de remise <span className="font-mono text-base font-semibold tracking-[0.25em] text-ink">{c.code}</span></p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-sm text-muted">Payez ce montant au loueur quand il vous remet le matériel, puis donnez-lui votre code de remise : c&apos;est votre preuve de paiement. Ne le donnez jamais avant d&apos;avoir payé et reçu le matériel. Vous le retrouvez dans le détail de votre réservation.</p>
+        </Card>
+      )}
 
       <Card className="mt-6 p-6">
         <h2 className="text-lg font-semibold text-ink">Prochaines étapes</h2>

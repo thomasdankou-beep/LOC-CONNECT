@@ -11,6 +11,9 @@ import { Pagination } from "@/components/ui/pagination";
 import { CompanyForm } from "@/features/lender/company-form";
 import { TeamPanel } from "@/features/lender/team-panel";
 import { RolesPanel } from "@/features/lender/roles-panel";
+import { PaymentModeForm } from "@/features/lender/payment-mode-form";
+import { getSettings } from "@/lib/settings";
+import { formatFcfa } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Mon entreprise", robots: { index: false } };
 
@@ -43,8 +46,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
 }
 
 async function ProfileTab({ lenderId, canEdit }: { lenderId: string; canEdit: boolean }) {
-  const l = await db.lender.findUniqueOrThrow({ where: { id: lenderId } });
-  return <CompanyForm canEdit={canEdit} company={{ companyName: l.companyName, description: l.description ?? "", phone: l.phone ?? "", email: l.email ?? "", address: l.address ?? "", offersDelivery: l.offersDelivery, deliveryFeeLocal: l.deliveryFeeLocal, deliveryFeeRemote: l.deliveryFeeRemote }} />;
+  const [l, settings] = await Promise.all([db.lender.findUniqueOrThrow({ where: { id: lenderId } }), getSettings()]);
+  return (
+    <>
+      <CompanyForm canEdit={canEdit} company={{ companyName: l.companyName, description: l.description ?? "", phone: l.phone ?? "", email: l.email ?? "", address: l.address ?? "", offersDelivery: l.offersDelivery, deliveryFeeLocal: l.deliveryFeeLocal, deliveryFeeRemote: l.deliveryFeeRemote }} />
+      <PaymentModeForm mode={l.paymentMode} allowed={l.cashModeAllowed} globallyEnabled={settings["cash.enabled"]} minDeposit={formatFcfa(settings["cash.min_deposit"])} canEdit={canEdit} />
+    </>
+  );
 }
 
 async function TeamTab({ actor }: { actor: Awaited<ReturnType<typeof pageLender>> }) {

@@ -22,6 +22,7 @@ import { escalateAndExpireModifications, requestModification } from "../services
 import { runPayout } from "../services/payouts";
 import { runMaintenance } from "../services/maintenance";
 import { updateDelivery } from "../services/deliveries";
+import { confirmCashPayment } from "../services/cash";
 import { computeClientScore, computeLenderScore } from "../services/scores";
 import { createPromotion } from "../services/admin";
 import { storage } from "../lib/storage";
@@ -35,7 +36,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 const TABLES = [
   "ModificationLine", "ModificationRequest", "ReservationVersion", "BalanceEntry", "Payout", "LenderReimbursement", "FinancialTransaction", "Refund", "PaymentAllocation",
-  "ExtraCharge", "ReturnPhoto", "ReturnReport", "Deposit", "DeliveryProof", "Delivery", "Attachment", "DisputeMessage", "Dispute", "Review", "Payment", "WebhookEvent",
+  "CashSettlement", "ExtraCharge", "ReturnPhoto", "ReturnReport", "Deposit", "DeliveryProof", "Delivery", "Attachment", "DisputeMessage", "Dispute", "Review", "Payment", "WebhookEvent",
   "ReservationStatusHistory", "ReservationItem", "Reservation", "HoldItem", "Hold", "CartItem", "Cart", "Notification", "AuditLog", "Favorite", "Promotion", "Subscription",
   "AvailabilityBlock", "StockMovement", "ProductPriceHistory", "ProductPhoto", "Product", "LenderUnavailability", "LenderScore", "ClientScore", "ValidationAction",
   "LenderMember", "Lender", "UserRole", "RolePermission", "Role", "Permission", "Session", "PasswordResetToken", "User", "Category", "City", "CancellationRule", "CancellationPolicy", "Setting",
@@ -75,6 +76,7 @@ async function shiftBack(reservationId: string, days: number) {
   await run(`UPDATE "Deposit" SET ${ts("createdAt")}, "heldAt" = "heldAt" - interval '${d} days', "settledAt" = "settledAt" - interval '${d} days', "releaseDueDate" = "releaseDueDate" - interval '${d} days' WHERE "itemId" IN (SELECT id FROM "ReservationItem" WHERE "reservationId" = '${rid}')`);
   await run(`UPDATE "ReturnReport" SET ${ts("createdAt")}, "settledAt" = "settledAt" - interval '${d} days', "contestDeadline" = "contestDeadline" - interval '${d} days' WHERE "itemId" IN (SELECT id FROM "ReservationItem" WHERE "reservationId" = '${rid}')`);
   await run(`UPDATE "Hold" SET ${ts("createdAt")}, "expiresAt" = "expiresAt" - interval '${d} days' WHERE id IN (SELECT "holdId" FROM "Reservation" WHERE id = '${rid}')`);
+  await run(`UPDATE "CashSettlement" SET ${ts("createdAt")}, ${ts("updatedAt")}, "confirmedAt" = "confirmedAt" - interval '${d} days' WHERE "reservationId" = '${rid}'`);
   await run(`UPDATE "Notification" SET ${ts("createdAt")}, "sentAt" = "sentAt" - interval '${d} days' WHERE link LIKE '%${rid}%'`);
 }
 
@@ -386,6 +388,24 @@ async function main() {
     await escalateAndExpireModifications();
   }
 
+  console.log("Paiement acompte + espèces…");
+  // loueur02 encaisse le solde en espèces à la remise ; loueur03 y est autorisé mais reste payé en ligne.
+  const cashLender = L(1);
+  await db.lender.update({ where: { id: cashLender.lenderId }, data: { cashModeAllowed: true, paymentMode: "DEPOSIT_CASH" } });
+  await db.lender.update({ where: { id: L(2).lenderId }, data: { cashModeAllowed: true } });
+  // Facture mixte à venir : un loueur payé en ligne, loueur02 en acompte + espèces (code de remise visible par le client).
+  await book(clients[0], [{ productId: productOf(L(4), 1), quantity: 2, start: 5, end: 7 }, { productId: productOf(cashLender, 1), quantity: 1, start: 5, end: 7 }]);
+  // Remise faite : solde encaissé par loueur02 avec le code du client, location en cours.
+  {
+    const r = await book(clients[3], [{ productId: productOf(cashLender, 2), quantity: 1, start: 7, end: 10 }]);
+    const a = lenderActor(cashLender.lenderId);
+    await lenderAdvance(a, r.id, "READY");
+    const s = await db.cashSettlement.findFirstOrThrow({ where: { reservationId: r.id } });
+    await confirmCashPayment(a, r.id, s.code);
+    await lenderAdvance(a, r.id, "IN_USE");
+    await shiftBack(r.id, 8);
+  }
+
   console.log("Paniers, blocages, favoris, versements…");
   // Client de démonstration avec un panier multi-loueurs prêt à payer.
   await db.cartItem.deleteMany({ where: { cart: { userId: clients[0].id } } });
@@ -446,6 +466,7 @@ async function main() {
   console.log(`  Admin finance    finance@${EMAIL_DOMAIN}   (support@, moderation@, stock@)`);
   console.log(`  Client           client01@${EMAIL_DOMAIN}   (client01 à client12 ; client01 a un panier prêt à payer)`);
   console.log(`  Loueur           loueur01@${EMAIL_DOMAIN}   (loueur01 à loueur16 ; loueur16 est en attente de validation)`);
+  console.log(`  Espèces          loueur02@${EMAIL_DOMAIN}   (acompte en ligne + solde en espèces ; client01 a une réservation mixte à venir)`);
   console.log(`  Sous-comptes     stock.loueur01@, commandes.loueur01@, finance.loueur01@, livraison.loueur01@, retours.loueur01@`);
   void parseDate;
 }

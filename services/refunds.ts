@@ -12,6 +12,7 @@ import { refundPercentFor } from "./pricing";
 import { executeRefund, recordTransaction, type LenderImpact } from "./finance";
 import { notifyLender, notifyUsers } from "./notifications";
 import { transitionItems } from "./reservations";
+import { assertCashNotCollected, syncCashSettlement } from "./cash";
 
 export const cancelInput = z.object({
   itemIds: z.array(z.string()).optional(),
@@ -42,6 +43,8 @@ export type CancellationPlan = {
   deliveryTotal: number;
   depositTotal: number;
   clientTotal: number;
+  /** Solde qui ne sera plus à payer en espèces au loueur (lignes en mode espèces). */
+  cashCancelled: number;
   policyName: string;
 };
 
@@ -65,7 +68,8 @@ export function planCancellation(input: {
   const lines: CancellationLine[] = input.items.map((item) => {
     const hours = hoursUntil(item.startDate, input.now);
     const percent = input.percentOverride ?? refundPercentFor(input.rules, hours);
-    const rentalRefund = prorate(item.subtotal, percent, 100);
+    // Seule la part payée en ligne est remboursable ; en mode espèces, le solde n'a pas encore été payé.
+    const rentalRefund = prorate(item.subtotal - item.cashDue, percent, 100);
     const commissionRefund = proportional ? prorate(item.commission, percent, 100) : 0;
     const depositRefund = item.deposit && item.deposit.status === "HELD" ? item.deposit.amount : 0;
     return { itemId: item.id, lenderId: item.lenderId, productName: item.productName, percent, hoursBeforeStart: Math.round(hours), rentalRefund, commissionRefund, lenderDeduction: rentalRefund - commissionRefund, depositRefund };
@@ -88,12 +92,13 @@ export function planCancellation(input: {
   const rentalTotal = sum(lines.map((l) => l.rentalRefund));
   const deliveryTotal = sum(deliveryRefunds.map((d) => d.refund));
   const depositTotal = sum(lines.map((l) => l.depositRefund));
-  return { lines, deliveryRefunds, rentalTotal, deliveryTotal, depositTotal, clientTotal: rentalTotal + deliveryTotal + depositTotal, policyName: input.policyName };
+  const cashCancelled = sum(input.items.map((i) => i.cashDue));
+  return { lines, deliveryRefunds, rentalTotal, deliveryTotal, depositTotal, clientTotal: rentalTotal + deliveryTotal + depositTotal, cashCancelled, policyName: input.policyName };
 }
 
 async function loadPlan(client: DbOrTx, actor: Actor, reservationId: string, input: Pick<CancelInput, "itemIds" | "refundPercent">) {
   const settings = await getSettings(client);
-  const reservation = await client.reservation.findUnique({ where: { id: reservationId }, include: { items: { include: { deposit: true } }, deliveries: true } });
+  const reservation = await client.reservation.findUnique({ where: { id: reservationId }, include: { items: { include: { deposit: true } }, deliveries: true, cashSettlements: true } });
   if (!reservation) throw notFound("Réservation");
 
   const isClient = actor.accountType === "CLIENT";
@@ -111,13 +116,15 @@ async function loadPlan(client: DbOrTx, actor: Actor, reservationId: string, inp
   if (items.length === 0) throw new AppError("CONFLICT", "Aucune ligne annulable.");
   const blocked = items.find((i) => !CANCELLABLE_STATUSES.includes(i.status));
   if (blocked) throw new AppError("INVALID_TRANSITION", `${blocked.productName} ne peut plus être annulé (statut ${blocked.status}).`);
+  if (!isAdmin) await assertCashNotCollected(client, reservationId, [...new Set(items.map((i) => i.lenderId))], "l'annulation");
 
   const policy = await client.cancellationPolicy.findFirst({ where: { active: true }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }], include: { rules: true } });
   const allocations = await client.paymentAllocation.findMany({ where: { reservationId }, select: { lenderId: true, commissionAmount: true } });
   const plan = planCancellation({
     items,
     allItems: reservation.items.map((i) => ({ id: i.id, lenderId: i.lenderId, status: i.status, commission: i.commission })),
-    deliveries: reservation.deliveries.map((d) => ({ lenderId: d.lenderId, fee: d.fee })),
+    // Livraison d'un loueur en mode espèces : seule sa part en ligne (commission éventuelle) est remboursable.
+    deliveries: reservation.deliveries.map((d) => ({ lenderId: d.lenderId, fee: d.fee - (reservation.cashSettlements.find((c) => c.lenderId === d.lenderId)?.deliveryDue ?? 0) })),
     allocations,
     rules: policy?.rules ?? [],
     policyName: policy?.name ?? "Aucune politique",
@@ -165,8 +172,11 @@ export async function cancelReservation(actor: Actor, reservationId: string, inp
 
     const remaining = await tx.reservationItem.count({ where: { reservationId, status: { notIn: ["CANCELLED", "REFUNDED"] } } });
     if (remaining === 0) await tx.reservation.update({ where: { id: reservationId }, data: { cancelledAt: new Date(), cancellationReason: input.reason } });
-    for (const d of plan.deliveryRefunds) {
-      await tx.delivery.updateMany({ where: { reservationId, lenderId: d.lenderId, status: { in: ["PENDING", "PREPARING"] } }, data: { status: "FAILED", notes: "Annulée" } });
+    for (const lenderId of new Set(items.map((i) => i.lenderId))) {
+      await syncCashSettlement(tx, reservationId, lenderId);
+      // Livraison annulée dès que toutes les lignes du loueur le sont (même sans frais remboursés en ligne).
+      const left = await tx.reservationItem.count({ where: { reservationId, lenderId, status: { notIn: ["CANCELLED", "REFUNDED"] } } });
+      if (left === 0) await tx.delivery.updateMany({ where: { reservationId, lenderId, status: { in: ["PENDING", "PREPARING"] } }, data: { status: "FAILED", notes: "Annulée" } });
     }
 
     await audit(tx, { userId: actor.userId, lenderId: isLender ? actor.lenderId : null, action: "reservation.cancel", entity: "Reservation", entityId: reservationId, newValue: { reason: input.reason, plan: { client: plan.clientTotal, rental: plan.rentalTotal, deposit: plan.depositTotal } }, meta: actor.meta });

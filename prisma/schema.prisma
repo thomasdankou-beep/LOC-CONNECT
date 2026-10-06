@@ -109,6 +109,19 @@ enum PaymentMethod {
   CARD
 }
 
+/// Mode de paiement d'un loueur : tout en ligne, ou acompte en ligne et solde en espèces à la remise.
+enum LenderPaymentMode {
+  ONLINE_FULL
+  DEPOSIT_CASH
+}
+
+enum CashSettlementStatus {
+  PENDING
+  PAID
+  UNPAID
+  CANCELLED
+}
+
 enum PayoutStatus {
   PENDING
   PAID
@@ -401,10 +414,10 @@ model UserRole {
 }
 
 model Lender {
-  id                String       @id @default(cuid())
-  ownerId           String       @unique
-  owner             User         @relation(fields: [ownerId], references: [id])
-  slug              String       @unique
+  id                String            @id @default(cuid())
+  ownerId           String            @unique
+  owner             User              @relation(fields: [ownerId], references: [id])
+  slug              String            @unique
   companyName       String
   rccm              String?
   description       String?
@@ -414,20 +427,22 @@ model Lender {
   email             String?
   address           String?
   cityId            String
-  city              City         @relation(fields: [cityId], references: [id])
-  status            LenderStatus @default(PENDING)
+  city              City              @relation(fields: [cityId], references: [id])
+  status            LenderStatus      @default(PENDING)
   validatedAt       DateTime?
   rejectionReason   String?
-  ratingAvg         Float        @default(0)
-  reviewCount       Int          @default(0)
-  offersDelivery    Boolean      @default(true)
-  deliveryFeeLocal  Int          @default(3000)
-  deliveryFeeRemote Int          @default(8000)
+  ratingAvg         Float             @default(0)
+  reviewCount       Int               @default(0)
+  offersDelivery    Boolean           @default(true)
+  deliveryFeeLocal  Int               @default(3000)
+  deliveryFeeRemote Int               @default(8000)
   commissionRateBps Int?
+  paymentMode       LenderPaymentMode @default(ONLINE_FULL)
+  cashModeAllowed   Boolean           @default(false) // le mode espèces est ouvert par l'administration
   payoutMethod      String?
   payoutAccount     String?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   members          LenderMember[]
   roles            Role[]
@@ -441,6 +456,7 @@ model Lender {
   disputes         Dispute[]
   reviews          Review[]
   reimbursements   LenderReimbursement[]
+  cashSettlements  CashSettlement[]
   subscriptions    Subscription[]
   lenderScore      LenderScore?
   modifications    ModificationRequest[]
@@ -720,7 +736,8 @@ model Reservation {
   deliveryFee        Int               @default(0)
   depositTotal       Int
   commissionTotal    Int
-  total              Int
+  cashTotal          Int               @default(0) // part à régler en espèces aux loueurs, hors paiement en ligne
+  total              Int // montant payé en ligne
   currency           String            @default("XOF")
   currentVersion     Int               @default(1)
   holdId             String?
@@ -729,15 +746,16 @@ model Reservation {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  items         ReservationItem[]
-  history       ReservationStatusHistory[]
-  payments      Payment[]
-  allocations   PaymentAllocation[]
-  deliveries    Delivery[]
-  disputes      Dispute[]
-  refunds       Refund[]
-  versions      ReservationVersion[]
-  modifications ModificationRequest[]
+  items           ReservationItem[]
+  history         ReservationStatusHistory[]
+  payments        Payment[]
+  allocations     PaymentAllocation[]
+  deliveries      Delivery[]
+  disputes        Dispute[]
+  refunds         Refund[]
+  versions        ReservationVersion[]
+  modifications   ModificationRequest[]
+  cashSettlements CashSettlement[]
 
   @@index([clientId, status])
   @@index([status, createdAt])
@@ -760,6 +778,8 @@ model ReservationItem {
   subtotal           Int
   commissionRateBps  Int
   commission         Int
+  paymentMode        LenderPaymentMode @default(ONLINE_FULL) // figé à la réservation
+  cashDue            Int               @default(0) // part de la location réglée en espèces (le reste est payé en ligne)
   depositAmount      Int
   refundPrice        Int
   allowsExtraBilling Boolean           @default(true)
@@ -861,6 +881,7 @@ model PaymentAllocation {
   commissionAmount Int
   netAmount        Int
   depositAmount    Int
+  cashAmount       Int         @default(0) // à régler en espèces au loueur, hors de ce paiement
   createdAt        DateTime    @default(now())
 
   @@index([paymentId])
@@ -978,6 +999,32 @@ model WebhookEvent {
   createdAt      DateTime  @default(now())
 
   @@unique([provider, eventId])
+}
+
+/// Solde payé en espèces au loueur à la remise du matériel (un par loueur et par réservation).
+/// Le client donne son code de remise une fois le solde payé ; le loueur le saisit pour confirmer l'encaissement.
+model CashSettlement {
+  id             String               @id @default(cuid())
+  reservationId  String
+  reservation    Reservation          @relation(fields: [reservationId], references: [id])
+  lenderId       String
+  lender         Lender               @relation(fields: [lenderId], references: [id])
+  amountDue      Int // location et livraison à régler en espèces
+  deliveryDue    Int                  @default(0)
+  code           String // code de remise à 4 chiffres, connu du client seulement
+  failedAttempts Int                  @default(0)
+  status         CashSettlementStatus @default(PENDING)
+  confirmedAt    DateTime?
+  confirmedById  String?
+  reportedAt     DateTime?
+  reportedById   String?
+  note           String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([reservationId, lenderId])
+  @@index([lenderId, status])
+  @@index([status, createdAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -1221,6 +1268,8 @@ model ModificationRequest {
   depositAfter     Int
   commissionBefore Int
   commissionAfter  Int
+  cashBefore       Int                @default(0)
+  cashAfter        Int                @default(0)
   requestedById    String
   requestedBy      User               @relation("ModificationRequester", fields: [requestedById], references: [id])
   validatedById    String?
@@ -1260,6 +1309,8 @@ model ModificationLine {
   unitPriceAfter    Int                 @default(0)
   subtotalBefore    Int                 @default(0)
   subtotalAfter     Int                 @default(0)
+  paymentMode       LenderPaymentMode   @default(ONLINE_FULL)
+  cashAfter         Int                 @default(0)
 }
 
 // ---------------------------------------------------------------------------

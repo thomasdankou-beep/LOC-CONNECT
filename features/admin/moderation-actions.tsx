@@ -4,7 +4,7 @@ import { ActionButton, FormAction } from "@/components/ui/action";
 
 const reason = (label = "Motif", required = true) => [{ name: "reason", label, type: "textarea" as const, required }];
 
-export function LenderActions({ id, status, commissionBps, defaultBps }: { id: string; status: "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED"; commissionBps: number | null; defaultBps: number }) {
+export function LenderActions({ id, status, commissionBps, defaultBps, cashAllowed }: { id: string; status: "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED"; commissionBps: number | null; defaultBps: number; cashAllowed: boolean }) {
   const endpoint = `/api/admin/lenders/${id}`;
   return (
     <div className="flex flex-wrap gap-2">
@@ -23,6 +23,11 @@ export function LenderActions({ id, status, commissionBps, defaultBps }: { id: s
         submitLabel="Enregistrer"
         success="Commission mise à jour"
       />
+      {cashAllowed ? (
+        <ActionButton endpoint={`${endpoint}/cash-mode`} method="PUT" body={{ cashModeAllowed: false }} label="Retirer les espèces" success="Paiement en espèces retiré" confirm={{ title: "Retirer le paiement en espèces ?", description: "Ses nouvelles réservations seront payées entièrement en ligne. Les réservations en cours ne changent pas.", confirmLabel: "Retirer" }} />
+      ) : (
+        <ActionButton endpoint={`${endpoint}/cash-mode`} method="PUT" body={{ cashModeAllowed: true }} label="Ouvrir les espèces" success="Paiement en espèces ouvert" confirm={{ title: "Ouvrir le paiement en espèces ?", description: "Le loueur pourra choisir l'acompte en ligne + solde en espèces. Réservez-le aux loueurs de confiance, par exemple après quelques locations réussies.", confirmLabel: "Ouvrir" }} />
+      )}
     </div>
   );
 }

@@ -10,7 +10,9 @@ import { AppError } from "@/lib/errors";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Avatar, Stars } from "@/components/ui/misc";
-import { CaretRight, MapPin, ShieldCheck, Storefront, Truck, Info } from "@/components/ui/icons";
+import { CaretRight, HandCoins, MapPin, ShieldCheck, Storefront, Truck, Info } from "@/components/ui/icons";
+import { getSettings } from "@/lib/settings";
+import { effectivePaymentMode } from "@/services/pricing";
 import { BookingPanel } from "@/features/catalog/booking-panel";
 import { Gallery } from "@/features/catalog/gallery";
 import { ProductCard } from "@/features/catalog/product-card";
@@ -39,7 +41,9 @@ export default async function ProductPage({ params, searchParams }: Props) {
   });
   if (!product) notFound();
 
-  const [actor, reviews, similar] = await Promise.all([getActor(), getProductReviews(product.id), similarProducts(product.id, product.categoryId)]);
+  const [actor, reviews, similar, settings] = await Promise.all([getActor(), getProductReviews(product.id), similarProducts(product.id, product.categoryId), getSettings()]);
+  const paymentMode = effectivePaymentMode(product.lender, settings);
+  const ratePct = (product.lender.commissionRateBps ?? settings["commission.rate_bps"]) / 100;
   const isClient = actor?.accountType === "CLIENT";
   const isFavorite = isClient ? Boolean(await db.favorite.findUnique({ where: { userId_productId: { userId: actor!.userId, productId: product.id } } })) : false;
   const initialStart = sp.start && /^\d{4}-\d{2}-\d{2}$/.test(sp.start) ? sp.start : undefined;
@@ -117,6 +121,11 @@ export default async function ProductPage({ params, searchParams }: Props) {
             <ul className="mt-3 space-y-2.5 text-[15px] text-ink/90">
               <li className="flex gap-2.5"><Info size={18} className="mt-0.5 shrink-0 text-royal-ink" /> Durée : de {product.minDays} jour{product.minDays > 1 ? "s" : ""}{product.maxDays ? ` à ${product.maxDays} jours` : ""}. Le jour de retour n&apos;est pas facturé.</li>
               <li className="flex gap-2.5"><ShieldCheck size={18} className="mt-0.5 shrink-0 text-royal-ink" /> {product.allowsExtraBilling ? "En cas de dommage supérieur à la caution, le complément peut être facturé." : "En cas de dommage, la retenue est plafonnée au montant de la caution."}</li>
+              {paymentMode === "DEPOSIT_CASH" ? (
+                <li className="flex gap-2.5"><HandCoins size={18} className="mt-0.5 shrink-0 text-royal-ink" /> Acompte en ligne de {ratePct} % de la location (minimum {formatFcfa(settings["cash.min_deposit"])}) et caution en ligne, puis solde en espèces au loueur à la remise du matériel.</li>
+              ) : (
+                <li className="flex gap-2.5"><ShieldCheck size={18} className="mt-0.5 shrink-0 text-royal-ink" /> Paiement 100 % en ligne, protégé par LOC&apos;CONNECT jusqu&apos;au retour du matériel.</li>
+              )}
               <li className="flex gap-2.5"><Truck size={18} className="mt-0.5 shrink-0 text-royal-ink" /> {lender.offersDelivery ? `Retrait chez le loueur ou livraison (${formatFcfa(lender.deliveryFeeLocal)} dans sa ville, ${formatFcfa(lender.deliveryFeeRemote)} ailleurs).` : "Retrait chez le loueur uniquement."}</li>
               {product.conditions && <li className="flex gap-2.5"><Info size={18} className="mt-0.5 shrink-0 text-royal-ink" /> {product.conditions}</li>}
             </ul>

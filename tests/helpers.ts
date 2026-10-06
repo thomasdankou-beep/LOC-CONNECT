@@ -7,7 +7,7 @@ import { resetRateLimits } from "@/lib/rate-limit";
 
 const TABLES = [
   "ModificationLine", "ModificationRequest", "ReservationVersion", "BalanceEntry", "Payout", "LenderReimbursement", "FinancialTransaction", "Refund", "PaymentAllocation",
-  "ExtraCharge", "ReturnPhoto", "ReturnReport", "Deposit", "DeliveryProof", "Delivery", "Attachment", "DisputeMessage", "Dispute", "Review", "Payment", "WebhookEvent",
+  "CashSettlement", "ExtraCharge", "ReturnPhoto", "ReturnReport", "Deposit", "DeliveryProof", "Delivery", "Attachment", "DisputeMessage", "Dispute", "Review", "Payment", "WebhookEvent",
   "ReservationStatusHistory", "ContactMessage", "ReservationItem", "Reservation", "HoldItem", "Hold", "CartItem", "Cart", "Notification", "AuditLog", "Favorite", "Promotion", "Subscription",
   "AvailabilityBlock", "StockMovement", "ProductPriceHistory", "ProductPhoto", "Product", "LenderUnavailability", "LenderScore", "ClientScore", "ValidationAction",
   "LenderMember", "Lender", "UserRole", "RolePermission", "Role", "Permission", "Session", "PasswordResetToken", "User", "Category", "City", "CancellationRule", "CancellationPolicy", "Setting",

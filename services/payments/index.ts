@@ -13,6 +13,7 @@ import { assertAvailable } from "../availability";
 import { addBalanceEntry, executeRefund, freezeUntil, recordTransaction } from "../finance";
 import { notifyUsers } from "../notifications";
 import { notifyLendersOfNewReservation, transitionItems } from "../reservations";
+import { cancelCashSettlements } from "../cash";
 import { getProvider, signPayload, type WebhookEventPayload } from "./providers";
 
 export const paymentInput = z.object({
@@ -196,6 +197,7 @@ async function settleInitialPayment(tx: Tx, payment: Payment) {
       await tx.reservationItem.updateMany({ where: { reservationId: reservation.id }, data: { status: "CANCELLED", cancelledAt: now } });
       await tx.reservation.update({ where: { id: reservation.id }, data: { status: "CANCELLED", cancelledAt: now, cancellationReason: "Paiement tardif remboursé" } });
     }
+    await cancelCashSettlements(tx, reservation.id);
     await notifyUsers(tx, [payment.userId], { type: "payment.refunded_late", title: "Paiement remboursé", body: `Le blocage de stock avait expiré : votre paiement ${payment.reference} a été intégralement remboursé.`, link: "/mes-paiements" });
     return { status: "REFUNDED_LATE" as const };
   }
@@ -209,6 +211,7 @@ async function settleInitialPayment(tx: Tx, payment: Payment) {
   }
 
   const deliveries = await tx.delivery.findMany({ where: { reservationId: reservation.id } });
+  const cashSettlements = await tx.cashSettlement.findMany({ where: { reservationId: reservation.id } });
   const lenderIds = [...new Set(reservation.items.map((i) => i.lenderId))];
   for (const lenderId of lenderIds) {
     const mine = reservation.items.filter((i) => i.lenderId === lenderId);
@@ -216,21 +219,25 @@ async function settleInitialPayment(tx: Tx, payment: Payment) {
     const deliveryFee = deliveries.find((d) => d.lenderId === lenderId)?.fee ?? 0;
     const itemCommission = sum(mine.map((i) => i.commission));
     const deliveryCommission = settings["commission.on_delivery"] ? applyBps(deliveryFee, rate) : 0;
-    const rental = sum(mine.map((i) => i.subtotal));
+    // En mode espèces, seule la part en ligne transite par LOC'CONNECT : le solde est réglé directement au loueur.
+    const settlement = cashSettlements.find((c) => c.lenderId === lenderId);
+    const cashDelivery = settlement?.deliveryDue ?? 0;
+    const rental = sum(mine.map((i) => i.subtotal - i.cashDue));
+    const onlineDelivery = deliveryFee - cashDelivery;
     const commission = itemCommission + deliveryCommission;
     const deposit = sum(mine.map((i) => i.depositAmount));
 
-    await tx.paymentAllocation.create({ data: { paymentId: payment.id, reservationId: reservation.id, lenderId, rentalAmount: rental, deliveryAmount: deliveryFee, commissionAmount: commission, netAmount: rental + deliveryFee - commission, depositAmount: deposit } });
+    await tx.paymentAllocation.create({ data: { paymentId: payment.id, reservationId: reservation.id, lenderId, rentalAmount: rental, deliveryAmount: onlineDelivery, commissionAmount: commission, netAmount: rental + onlineDelivery - commission, depositAmount: deposit, cashAmount: settlement?.amountDue ?? 0 } });
     await recordTransaction(tx, { type: "COMMISSION", direction: "INTERNAL", amount: commission, paymentId: payment.id, reservationId: reservation.id, lenderId });
 
     for (const item of mine) {
-      await addBalanceEntry(tx, { lenderId, kind: "SALE", amount: item.subtotal - item.commission, availableAt: freezeUntil(item.endDate, settings), reservationId: reservation.id, itemId: item.id });
+      await addBalanceEntry(tx, { lenderId, kind: "SALE", amount: item.subtotal - item.cashDue - item.commission, availableAt: freezeUntil(item.endDate, settings), reservationId: reservation.id, itemId: item.id });
       await tx.deposit.update({ where: { itemId: item.id }, data: { status: "HELD", heldAt: now, paymentId: payment.id, releaseDueDate: addDays(item.endDate, settings["deposit.release_deadline_days"]) } });
       await recordTransaction(tx, { type: "DEPOSIT_HELD", direction: "INTERNAL", amount: item.depositAmount, paymentId: payment.id, reservationId: reservation.id, itemId: item.id, lenderId });
     }
-    if (deliveryFee > 0) {
+    if (onlineDelivery - deliveryCommission > 0) {
       const lastEnd = new Date(Math.max(...mine.map((i) => i.endDate.getTime())));
-      await addBalanceEntry(tx, { lenderId, kind: "DELIVERY_FEE", amount: deliveryFee - deliveryCommission, availableAt: freezeUntil(lastEnd, settings), reservationId: reservation.id, note: "Frais de livraison" });
+      await addBalanceEntry(tx, { lenderId, kind: "DELIVERY_FEE", amount: onlineDelivery - deliveryCommission, availableAt: freezeUntil(lastEnd, settings), reservationId: reservation.id, note: "Frais de livraison" });
     }
   }
 

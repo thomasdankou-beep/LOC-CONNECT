@@ -346,6 +346,26 @@ export async function setLenderCommission(actor: Actor, lenderId: string, rate: 
   return updated;
 }
 
+export const lenderCashInput = z.object({ cashModeAllowed: z.boolean() });
+
+/** Ouvre ou retire le mode acompte + espèces à un loueur. Le retrait le repasse en paiement en ligne pour les nouvelles réservations. */
+export async function setLenderCashMode(actor: Actor, lenderId: string, allowed: boolean) {
+  need(actor, "ADMIN_LENDERS");
+  const lender = await db.lender.findUnique({ where: { id: lenderId } });
+  if (!lender) throw notFound("Loueur");
+  return transaction(async (tx) => {
+    const updated = await tx.lender.update({ where: { id: lenderId }, data: { cashModeAllowed: allowed, ...(allowed ? {} : { paymentMode: "ONLINE_FULL" }) } });
+    await audit(tx, { userId: actor.userId, lenderId, action: "lender.cash_mode", entity: "Lender", entityId: lenderId, oldValue: { cashModeAllowed: lender.cashModeAllowed, paymentMode: lender.paymentMode }, newValue: { cashModeAllowed: allowed }, meta: actor.meta });
+    await notifyLender(tx, lenderId, {
+      type: "lender.cash_mode",
+      title: allowed ? "Paiement en espèces disponible" : "Paiement en espèces retiré",
+      body: allowed ? "Vous pouvez désormais choisir l'acompte en ligne et le solde en espèces dans vos paramètres." : "Vos nouvelles réservations sont payées entièrement en ligne. Les réservations en cours ne changent pas.",
+      link: "/loueur/parametres",
+    }, "COMPANY_MANAGE");
+    return updated;
+  });
+}
+
 export async function listSubscriptions(actor: Actor) {
   need(actor, "ADMIN_SUBSCRIPTIONS");
   return db.subscription.findMany({ include: { lender: { select: { companyName: true } } }, orderBy: { createdAt: "desc" }, take: 100 });

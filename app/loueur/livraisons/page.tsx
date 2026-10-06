@@ -64,6 +64,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
                   </div>
                 </div>
                 {d.notes && <p className="mt-3 rounded-control bg-surface-2/60 px-3 py-2 text-sm text-muted">{d.notes}</p>}
+                {d.reservation.cashSettlements.filter((c) => c.status === "PENDING" && c.amountDue > 0).map((c, k) => (
+                  <p key={k} className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-control bg-warn-soft/60 px-3 py-2 text-sm text-ink">
+                    <span>Solde à encaisser en espèces à la livraison : <strong className="tabular-nums">{formatFcfa(c.amountDue)}</strong>. Demandez le code de remise du client avant de marquer « livré ».</span>
+                    <Link href={`/loueur/reservations/${d.reservation.id}`} className="font-medium text-royal-ink hover:underline">Saisir le code</Link>
+                  </p>
+                ))}
                 <div className="mt-4 border-t border-line pt-4">
                   <DeliveryControls id={d.id} status={d.status} scheduledDate={d.scheduledDate ? toISODate(d.scheduledDate) : null} slotStart={d.slotStart} slotEnd={d.slotEnd} itemsReady={d.reservation.items.some((i) => i.status === "READY")} perms={perms} />
                 </div>

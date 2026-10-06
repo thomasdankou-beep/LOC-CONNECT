@@ -7,6 +7,7 @@ import { parseDate } from "@/lib/dates";
 import { can, type Actor } from "@/lib/auth/actor";
 import { notifyUsers } from "./notifications";
 import { transitionItems } from "./reservations";
+import { assertCashSettled } from "./cash";
 
 const DELIVERY_FLOW: Record<DeliveryStatus, DeliveryStatus[]> = {
   PENDING: ["PREPARING", "FAILED"],
@@ -64,6 +65,7 @@ export async function updateDelivery(actor: Actor & { lenderId: string }, delive
       const scope = { actorId: actor.userId, lenderId: actor.lenderId };
       if (input.status === "OUT_FOR_DELIVERY") await transitionItems(tx, reservationId, "DELIVERING", { ...scope, onlyFrom: ["READY"], note: "Livraison en route" });
       if (input.status === "DELIVERED") {
+        await assertCashSettled(tx, reservationId, actor.lenderId);
         data.deliveredAt = new Date();
         await transitionItems(tx, reservationId, "DELIVERED", { ...scope, onlyFrom: ["DELIVERING"], note: "Livré" });
       }
@@ -99,7 +101,7 @@ export async function listLenderDeliveries(lenderId: string, opts: { status?: De
   const where: Prisma.DeliveryWhereInput = { lenderId, ...(opts.status ? { status: opts.status } : {}), reservation: { status: { notIn: ["HOLD", "PENDING_PAYMENT", "DRAFT", "CANCELLED", "REFUNDED"] } } };
   const [total, rows] = await Promise.all([
     db.delivery.count({ where }),
-    db.delivery.findMany({ where, include: { reservation: { select: { reference: true, id: true, client: { select: { firstName: true, lastName: true, phone: true } }, items: { where: { lenderId }, select: { productName: true, quantity: true, status: true } } } }, proofs: true }, orderBy: [{ scheduledDate: "asc" }], skip: (page - 1) * pageSize, take: pageSize }),
+    db.delivery.findMany({ where, include: { reservation: { select: { reference: true, id: true, client: { select: { firstName: true, lastName: true, phone: true } }, items: { where: { lenderId }, select: { productName: true, quantity: true, status: true } }, cashSettlements: { where: { lenderId }, select: { amountDue: true, status: true } } } }, proofs: true }, orderBy: [{ scheduledDate: "asc" }], skip: (page - 1) * pageSize, take: pageSize }),
   ]);
   return { rows, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
 }

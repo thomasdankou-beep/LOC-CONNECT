@@ -7,8 +7,9 @@ import { getSettings } from "@/lib/settings";
 import { assertTransition, aggregateStatus } from "@/lib/state-machine";
 import { can, type Actor } from "@/lib/auth/actor";
 import { assertAvailable, validateRentalPeriod } from "./availability";
-import { computeTotals, priceLine, type LenderDeliveryTerms } from "./pricing";
+import { computeTotals, effectivePaymentMode, priceLine, type LenderDeliveryTerms } from "./pricing";
 import { notifyLender, notifyUsers } from "./notifications";
+import { assertCashSettled, syncCashSettlement } from "./cash";
 
 const RESERVATION_ITEM_INCLUDE = {
   product: { select: { id: true, slug: true, name: true, photos: { orderBy: { position: "asc" as const }, take: 1 } } },
@@ -48,7 +49,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
     const terms = new Map<string, LenderDeliveryTerms>();
     for (const i of hold.items) {
       const l = i.product.lender;
-      terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, commissionRateBps: l.commissionRateBps ?? settings["commission.rate_bps"] });
+      terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, commissionRateBps: l.commissionRateBps ?? settings["commission.rate_bps"], paymentMode: effectivePaymentMode(l, settings) });
     }
     if (hold.fulfillmentType === "DELIVERY") {
       for (const t of terms.values()) {
@@ -60,7 +61,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
     }
 
     const priced = hold.items.map((i) =>
-      priceLine({ productId: i.productId, lenderId: i.product.lenderId, quantity: i.quantity, start: i.startDate, end: i.endDate, unitPrice: i.product.unitPrice, depositAmount: i.product.depositAmount, refundPrice: i.product.refundPrice, commissionRateBps: terms.get(i.product.lenderId)!.commissionRateBps }),
+      priceLine({ productId: i.productId, lenderId: i.product.lenderId, quantity: i.quantity, start: i.startDate, end: i.endDate, unitPrice: i.product.unitPrice, depositAmount: i.product.depositAmount, refundPrice: i.product.refundPrice, commissionRateBps: terms.get(i.product.lenderId)!.commissionRateBps, paymentMode: terms.get(i.product.lenderId)!.paymentMode, minCashDeposit: settings["cash.min_deposit"] }),
     );
     const totals = computeTotals(priced, terms, hold.fulfillmentType, hold.deliveryCityId, settings["commission.on_delivery"]);
 
@@ -81,6 +82,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
         deliveryFee: totals.deliveryFee,
         depositTotal: totals.depositTotal,
         commissionTotal: totals.commissionTotal,
+        cashTotal: totals.cashTotal,
         total: totals.total,
         holdId: hold.id,
         items: {
@@ -96,6 +98,8 @@ export async function createReservationFromHold(userId: string, holdId: string, 
             subtotal: l.subtotal,
             commissionRateBps: l.commissionRateBps,
             commission: l.commission,
+            paymentMode: l.paymentMode,
+            cashDue: l.cashDue,
             depositAmount: l.deposit,
             refundPrice: l.refundPrice,
             allowsExtraBilling: hold.items[idx].product.allowsExtraBilling,
@@ -122,6 +126,9 @@ export async function createReservationFromHold(userId: string, holdId: string, 
           },
         });
       }
+    }
+    for (const b of totals.byLender) {
+      if (b.paymentMode === "DEPOSIT_CASH") await syncCashSettlement(tx, reservation.id, b.lenderId, { deliveryDue: b.cashDelivery });
     }
     await tx.reservationStatusHistory.create({ data: { reservationId: reservation.id, toStatus: "HOLD", actorId, note: "Réservation créée depuis le blocage de stock" } });
     await tx.reservationVersion.create({ data: { reservationId: reservation.id, version: 1, snapshot: snapshotOf(reservation) as Prisma.InputJsonValue, total: reservation.total, deposit: reservation.depositTotal, commission: reservation.commissionTotal, createdById: actorId } });
@@ -215,6 +222,11 @@ export async function getReservationDetail(actor: Actor, reservationId: string) 
       refunds: scope.kind === "lender" ? false : { orderBy: { createdAt: "desc" } },
       modifications: { where: scope.kind === "lender" ? { lenderId: scope.lenderId } : {}, orderBy: { requestedAt: "desc" }, include: { lines: true } },
       history: { where: scope.kind === "lender" ? { OR: [{ itemId: null }, { item: { lenderId: scope.lenderId } }] } : {}, orderBy: { createdAt: "asc" } },
+      // Le code de remise n'est jamais transmis au loueur : c'est la preuve que le client a payé.
+      cashSettlements: {
+        where: scope.kind === "lender" ? { lenderId: scope.lenderId } : {},
+        select: { id: true, lenderId: true, amountDue: true, deliveryDue: true, status: true, failedAttempts: true, confirmedAt: true, reportedAt: true, note: true, code: scope.kind !== "lender", lender: { select: { companyName: true } } },
+      },
     },
   });
   return { reservation, scope };
@@ -283,6 +295,7 @@ export async function lenderAdvance(actor: Actor & { lenderId: string }, reserva
   return transaction(async (tx) => {
     await lockReservation(tx, reservationId);
     const reservation = await tx.reservation.findUniqueOrThrow({ where: { id: reservationId } });
+    if (to === "IN_USE") await assertCashSettled(tx, reservationId, actor.lenderId);
     if (to === "IN_USE" && reservation.fulfillmentType === "DELIVERY") {
       const items = await tx.reservationItem.findMany({ where: { reservationId, lenderId: actor.lenderId, ...(itemIds ? { id: { in: itemIds } } : {}) } });
       if (items.some((i) => i.status === "READY")) throw new AppError("INVALID_TRANSITION", "Cette commande est en livraison : utilisez le suivi de livraison.");

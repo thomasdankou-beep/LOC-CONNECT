@@ -7,7 +7,7 @@ import { AppError } from "@/lib/errors";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { CANCELLABLE_STATUSES } from "@/lib/state-machine";
-import { DELIVERY_STATUS, DEPOSIT_STATUS, DISPUTE_STATUS, FULFILLMENT, MODIFICATION_STATUS, PAYMENT_METHOD, PAYMENT_STATUS, REFUND_STATUS, RESERVATION_STATUS, RETURN_REPORT_STATUS } from "@/lib/labels";
+import { DELIVERY_STATUS, DEPOSIT_STATUS, DISPUTE_STATUS, FULFILLMENT, MODIFICATION_STATUS, PAYMENT_METHOD, PAYMENT_STATUS, REFUND_STATUS, RESERVATION_STATUS, RETURN_REPORT_STATUS, CASH_STATUS, PAYMENT_MODE } from "@/lib/labels";
 import { getReservationDetail } from "@/services/reservations";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import { Photo } from "@/components/ui/photo";
 import { ArrowLeft, Truck } from "@/components/ui/icons";
 import { CancelButton } from "@/features/reservations/client-actions";
 import { AdminRefund, ModificationAdminActions, StatusCorrection } from "@/features/admin/reservation-actions";
+import { AdminCashActions } from "@/features/cash/cash-cards";
 
 export const metadata: Metadata = { title: "Réservation", robots: { index: false } };
 
@@ -55,9 +56,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div className="space-y-6">
           {[...byLender.entries()].map(([lenderId, items]) => {
             const delivery = r.deliveries.find((d) => d.lenderId === lenderId);
+            const cash = r.cashSettlements.find((c) => c.lenderId === lenderId);
             return (
               <Card key={lenderId}>
-                <CardHeader title={items[0].lender.companyName} description={items[0].lender.phone ?? undefined} />
+                <CardHeader title={items[0].lender.companyName} description={items[0].lender.phone ?? undefined} action={<Badge tone={items[0].paymentMode === "DEPOSIT_CASH" ? "warning" : "neutral"}>{PAYMENT_MODE[items[0].paymentMode].short}</Badge>} />
                 <ul className="divide-y divide-line">
                   {items.map((i) => (
                     <li key={i.id} className="flex flex-col gap-4 p-5 sm:flex-row">
@@ -76,6 +78,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                     </li>
                   ))}
                 </ul>
+                {cash && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-warn-soft/40 px-5 py-3 text-sm">
+                    <span className="text-ink">
+                      Solde en espèces : <strong className="tabular-nums">{formatFcfa(cash.amountDue)}</strong>
+                      {cash.deliveryDue > 0 && <span className="text-muted"> (dont livraison {formatFcfa(cash.deliveryDue)})</span>}
+                      {typeof cash.code === "string" && cash.status === "PENDING" && <span className="text-muted"> · code {cash.code}</span>}
+                      {cash.failedAttempts > 0 && <span className="text-muted"> · {cash.failedAttempts} code(s) erroné(s)</span>}
+                      {cash.note && <span className="block text-muted">{cash.note}</span>}
+                    </span>
+                    <span className="flex items-center gap-2"><StatusBadge entry={CASH_STATUS[cash.status]} />{can(actor, "ADMIN_PAYMENTS") && <AdminCashActions cash={cash} />}</span>
+                  </div>
+                )}
                 {delivery?.type === "DELIVERY" && (
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-2/40 px-5 py-3 text-sm">
                     <span className="flex items-center gap-2 text-ink"><Truck size={16} className="text-royal-ink" /> {delivery.address}{delivery.zone ? `, ${delivery.zone}` : ""}</span>
@@ -124,7 +138,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {r.deliveryFee > 0 && <div className="flex justify-between"><dt className="text-muted">Livraison</dt><dd><Money value={r.deliveryFee} /></dd></div>}
               <div className="flex justify-between"><dt className="text-muted">Cautions</dt><dd><Money value={r.depositTotal} /></dd></div>
               <div className="flex justify-between"><dt className="text-muted">Commission</dt><dd><Money value={r.commissionTotal} /></dd></div>
-              <div className="flex justify-between border-t border-line pt-2 text-base font-semibold"><dt>Total payé</dt><dd><Money value={r.total} /></dd></div>
+              <div className="flex justify-between border-t border-line pt-2 text-base font-semibold"><dt>{r.cashTotal > 0 ? "Payé en ligne" : "Total payé"}</dt><dd><Money value={r.total} /></dd></div>
+              {r.cashTotal > 0 && <div className="flex justify-between font-semibold"><dt>En espèces aux loueurs</dt><dd><Money value={r.cashTotal} /></dd></div>}
             </dl>
           </Card>
           <Card className="p-5">

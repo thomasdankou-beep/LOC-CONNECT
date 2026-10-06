@@ -102,7 +102,7 @@ describe("retour et caution", () => {
 });
 
 describe("plan d'annulation", () => {
-  const item = (over: object = {}) => ({ id: "i1", reservationId: "r", productId: "p", lenderId: "L", productName: "Tente", quantity: 1, startDate: parseDate("2026-06-10"), endDate: parseDate("2026-06-12"), days: 2, unitPrice: 50_000, subtotal: 100_000, commissionRateBps: 1000, commission: 10_000, depositAmount: 80_000, refundPrice: 1, allowsExtraBilling: true, status: "CONFIRMED" as const, cancelledAt: null, refundedRental: 0, createdAt: new Date(), updatedAt: new Date(), deposit: { id: "d", itemId: "i1", amount: 80_000, withheldAmount: 0, releasedAmount: 0, status: "HELD" as const, mode: "COLLECTED", heldAt: null, settledAt: null, releaseDueDate: null, frozen: false, reason: null, paymentId: null, createdAt: new Date(), updatedAt: new Date() }, ...over });
+  const item = (over: object = {}) => ({ id: "i1", reservationId: "r", productId: "p", lenderId: "L", productName: "Tente", quantity: 1, startDate: parseDate("2026-06-10"), endDate: parseDate("2026-06-12"), days: 2, unitPrice: 50_000, subtotal: 100_000, commissionRateBps: 1000, commission: 10_000, paymentMode: "ONLINE_FULL" as "ONLINE_FULL" | "DEPOSIT_CASH", cashDue: 0, depositAmount: 80_000, refundPrice: 1, allowsExtraBilling: true, status: "CONFIRMED" as const, cancelledAt: null, refundedRental: 0, createdAt: new Date(), updatedAt: new Date(), deposit: { id: "d", itemId: "i1", amount: 80_000, withheldAmount: 0, releasedAmount: 0, status: "HELD" as const, mode: "COLLECTED", heldAt: null, settledAt: null, releaseDueDate: null, frozen: false, reason: null, paymentId: null, createdAt: new Date(), updatedAt: new Date() }, ...over });
   const rules = [{ minHoursBefore: 72, refundPercent: 100 }, { minHoursBefore: 24, refundPercent: 50 }, { minHoursBefore: 0, refundPercent: 0 }];
 
   it("rembourse selon la politique, commission au prorata, caution intégrale", () => {
@@ -120,6 +120,14 @@ describe("plan d'annulation", () => {
     expect(plan.lines[0].rentalRefund).toBe(50_000);
     expect(plan.lines[0].commissionRefund).toBe(0);
     expect(plan.lines[0].lenderDeduction).toBe(50_000);
+  });
+
+  it("en mode espèces, ne rembourse que l'acompte payé en ligne et annule le solde dû", () => {
+    const plan = planCancellation({ items: [item({ paymentMode: "DEPOSIT_CASH", cashDue: 90_000 })], allItems: [{ id: "i1", lenderId: "L", status: "CONFIRMED", commission: 10_000 }], deliveries: [], allocations: [], rules, policyName: "std", settings: { "commission.refund_policy": "PROPORTIONAL" }, now: parseDate("2026-06-01") });
+    expect(plan.lines[0].rentalRefund).toBe(10_000);
+    expect(plan.lines[0].lenderDeduction).toBe(0);
+    expect(plan.cashCancelled).toBe(90_000);
+    expect(plan.clientTotal).toBe(90_000); // acompte 10 000 + caution 80 000
   });
 
   it("rembourse la livraison seulement si toutes les lignes du loueur sont annulées", () => {

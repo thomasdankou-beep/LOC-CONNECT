@@ -30,6 +30,7 @@ function groups(hours: { hold: number; freeze: number; contest: number; response
         { q: "Qu'est-ce que la caution ?", a: "Chaque article loué peut avoir une caution, définie par le loueur. Elle est bloquée avec votre paiement, ligne par ligne, et restituée après le constat de retour si le matériel revient en bon état. Elle n'est jamais mélangée avec celle d'un autre loueur." },
         { q: "Quand récupère-je ma caution ?", a: "Sans dommage constaté, la caution est restituée dès le constat de retour. En cas de dommage ou de perte, le loueur déclare le montant avec des photos. La retenue est plafonnée par le montant de la caution." },
         { q: "Puis-je contester une retenue ?", a: `Oui. Vous disposez de ${hours.contest} heures après le constat pour l'accepter ou le contester. Une contestation gèle la caution concernée et ouvre un litige arbitré par LOC'CONNECT.` },
+        { q: "Puis-je payer en espèces ?", a: "Oui, chez les loueurs qui le proposent (indiqué « acompte + espèces » sur la fiche du produit et dans le panier). Vous payez en ligne un acompte et la caution, puis le reste en espèces au loueur quand il vous remet le matériel. Votre code de remise, visible dans votre réservation, sert de preuve : donnez-le au loueur seulement après avoir payé et reçu le matériel. Les autres loueurs restent payés en ligne, avec le même paiement unique." },
         { q: "Quels moyens de paiement sont acceptés ?", a: "Orange Money, MTN Money, Moov Money, Wave et carte bancaire. Dans la version de démonstration, le paiement est simulé : aucun argent réel n'est débité." },
       ],
     },
@@ -52,6 +53,7 @@ function groups(hours: { hold: number; freeze: number; contest: number; response
       items: [
         { q: "Comment devenir loueur ?", a: "Créez un compte professionnel depuis la page « Devenir loueur ». Notre équipe valide votre entreprise, puis vous publiez vos produits, gérez le stock, les livraisons, les retours et vos revenus." },
         { q: "Quand suis-je payé ?", a: `Votre part est versée ${hours.freeze} heures après la fin de la location, sauf litige ou contestation en cours. La commission de LOC'CONNECT est définie par la plateforme et figée au moment de chaque réservation.` },
+        { q: "Puis-je être payé en espèces par mes clients ?", a: "Oui, après accord de LOC'CONNECT. Vos clients paient en ligne un acompte (notre commission) et la caution, puis vous règlent le solde en espèces à la remise. Vous confirmez l'encaissement en saisissant leur code de remise. Si un client ne paie pas, vous gardez votre matériel et vous le signalez depuis la réservation. Le choix se fait dans « Mon entreprise »." },
         { q: "Puis-je donner accès à mon équipe ?", a: "Oui. Vous créez des sous-comptes avec des rôles précis (stock, commandes, finance, livraison, retours) ou des rôles personnalisés. Vos collaborateurs n'accèdent qu'à votre entreprise." },
       ],
     },
