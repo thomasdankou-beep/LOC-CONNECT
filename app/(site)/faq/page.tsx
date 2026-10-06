@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSettings } from "@/lib/settings";
-import { depositPercentFrom } from "@/services/pricing";
+import { depositFloorFrom, depositPercentFrom } from "@/services/pricing";
 import { PageShell } from "@/components/layout/page-shell";
 import { CaretDown } from "@/components/ui/icons";
 
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 type QA = { q: string; a: string };
 type Group = { title: string; items: QA[] };
 
-function groups(hours: { hold: number; freeze: number; contest: number; response: number; depositPercent: number | null }): Group[] {
+function groups(hours: { hold: number; freeze: number; contest: number; response: number; depositPercent: number | null; depositFloor: number | null }): Group[] {
   return [
     {
       title: "Réserver",
@@ -28,7 +28,7 @@ function groups(hours: { hold: number; freeze: number; contest: number; response
     {
       title: "Payer et caution",
       items: [
-        { q: "Qu'est-ce que la caution ?", a: `${hours.depositPercent != null ? `La caution vaut ${hours.depositPercent} % du montant de la location chez chaque loueur.` : "Chaque article loué peut avoir une caution, définie par le loueur."} Elle est payée avec votre réservation, ligne par ligne, et restituée après le constat de retour si le matériel revient en bon état. Elle n'est jamais mélangée avec celle d'un autre loueur.` },
+        { q: "Qu'est-ce que la caution ?", a: `${hours.depositPercent != null ? `La caution vaut ${hours.depositPercent} % du montant de la location chez chaque loueur${hours.depositFloor ? `, avec un minimum de ${hours.depositFloor} % de la valeur du matériel loué (pour le matériel cher loué peu de temps)` : ""}.` : "Chaque article loué peut avoir une caution, définie par le loueur."} Elle est payée avec votre réservation, ligne par ligne, et restituée après le constat de retour si le matériel revient en bon état. Elle n'est jamais mélangée avec celle d'un autre loueur.` },
         { q: "Quand récupère-je ma caution ?", a: "Sans dommage constaté, la caution est restituée dès le constat de retour. En cas de dommage ou de perte, le loueur déclare le montant avec des photos. La retenue est plafonnée par le montant de la caution." },
         { q: "Puis-je contester une retenue ?", a: `Oui. Vous disposez de ${hours.contest} heures après le constat pour l'accepter ou le contester. Une contestation gèle la caution concernée et ouvre un litige arbitré par LOC'CONNECT.` },
         { q: "Puis-je payer en espèces ?", a: "Oui, chez les loueurs qui le proposent (indiqué « acompte + espèces » sur la fiche du produit et dans le panier). Vous payez en ligne un acompte et la caution, puis le reste en espèces au loueur quand il vous remet le matériel. Votre code de remise, visible dans votre réservation, sert de preuve : donnez-le au loueur seulement après avoir payé et reçu le matériel. Les autres loueurs restent payés en ligne, avec le même paiement unique." },
@@ -63,7 +63,7 @@ function groups(hours: { hold: number; freeze: number; contest: number; response
 
 export default async function FaqPage() {
   const s = await getSettings();
-  const data = groups({ hold: s["hold.duration_minutes"], freeze: s["payout.freeze_hours"], contest: s["return.contest_window_hours"], response: s["modification.lender_response_hours"], depositPercent: depositPercentFrom(s) });
+  const data = groups({ hold: s["hold.duration_minutes"], freeze: s["payout.freeze_hours"], contest: s["return.contest_window_hours"], response: s["modification.lender_response_hours"], depositPercent: depositPercentFrom(s), depositFloor: depositFloorFrom(s) });
   const jsonLd = { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: data.flatMap((g) => g.items).map((i) => ({ "@type": "Question", name: i.q, acceptedAnswer: { "@type": "Answer", text: i.a } })) };
   return (
     <PageShell title="Questions fréquentes" description="Tout ce qu'il faut savoir pour louer ou proposer du matériel sur LOC'CONNECT." narrow>

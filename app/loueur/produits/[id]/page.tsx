@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getSettings } from "@/lib/settings";
-import { depositPercentFrom } from "@/services/pricing";
+import { depositFloorFrom, depositPercentFrom } from "@/services/pricing";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { can } from "@/lib/auth/actor";
@@ -54,6 +54,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       {canUpdate ? (
         <ProductForm
           depositPercent={depositPercentFrom(settings)}
+          depositFloor={depositFloorFrom(settings)}
           categories={categories.map((c) => ({ id: c.id, name: c.name, children: c.children.map((ch) => ({ id: ch.id, name: ch.name })) }))}
           cities={cities.map((c) => ({ id: c.id, name: c.name }))}
           defaults={{ id: product.id, name: product.name, description: product.description, conditions: product.conditions ?? "", categoryId: product.categoryId, cityId: product.cityId, unitPrice: product.unitPrice, stockQuantity: product.stockQuantity, depositAmount: product.depositAmount, refundPrice: product.refundPrice, minDays: product.minDays, maxDays: product.maxDays, allowsExtraBilling: product.allowsExtraBilling }}

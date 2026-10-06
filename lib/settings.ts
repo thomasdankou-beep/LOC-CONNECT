@@ -28,6 +28,7 @@ export const SETTING_DEFS = {
   "hold.nonconversion_threshold_pct": { default: 60, type: "int", group: "HOLD", label: "Seuil de HOLD non convertis (%)", description: "Au-delà, la durée du HOLD du client est réduite." },
   "deposit.mode": { default: "PERCENT_OF_RENTAL", type: "enum", options: ["PERCENT_OF_RENTAL", "FIXED_PER_PRODUCT"], group: "Retour et caution", label: "Calcul de la caution", description: "PERCENT_OF_RENTAL : la caution est un pourcentage du montant de la location de chaque loueur. FIXED_PER_PRODUCT : chaque loueur fixe une caution par unité sur ses produits. Le mode est figé sur chaque réservation." },
   "deposit.percent": { default: 30, type: "int", group: "Retour et caution", label: "Caution en % de la location", description: "Utilisé quand la caution est calculée en pourcentage : 30 = 30 % du montant de la location des articles de chaque loueur (entre 0 et 100)." },
+  "deposit.min_value_percent": { default: 10, type: "int", group: "Retour et caution", label: "Caution minimale en % de la valeur du matériel", description: "Avec la caution en pourcentage : la caution d'un article ne descend jamais sous ce pourcentage de sa valeur de remplacement (prix de remboursement saisi par le loueur). 0 = pas de minimum." },
   "return.contest_window_hours": { default: 48, type: "int", group: "Retour et caution", label: "Fenêtre de contestation d'un constat (heures)", description: "Après un constat avec retenue, le client peut contester pendant ce délai." },
   "return.evidence_required": { default: true, type: "bool", group: "Retour et caution", label: "Photos obligatoires pour une retenue", description: "Une retenue de caution exige au moins une photo de preuve." },
   "deposit.release_deadline_days": { default: 7, type: "int", group: "Retour et caution", label: "Date limite de libération de la caution (jours après la fin)", description: "Délai maximal pour traiter le retour et libérer ou retenir la caution." },
@@ -89,7 +90,7 @@ export function validateSettingValue(key: string, value: unknown): number | bool
   if (def.type === "int") {
     const n = Number(value);
     if (!Number.isInteger(n) || n < 0) throw new Error(`${def.label} : entier positif attendu.`);
-    if (key === "deposit.percent" && n > 100) throw new Error(`${def.label} : entre 0 et 100.`);
+    if ((key === "deposit.percent" || key === "deposit.min_value_percent") && n > 100) throw new Error(`${def.label} : entre 0 et 100.`);
     return n;
   }
   if (def.type === "bool") {

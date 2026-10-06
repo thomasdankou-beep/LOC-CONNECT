@@ -97,6 +97,7 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
   const cashFor = (subtotal: number, commission: number, mode: LenderPaymentMode) => subtotal - onlineRentalFor(subtotal, commission, mode, minCash);
   // Le mode de calcul de la caution est figé sur la réservation : un article ajouté suit la règle des autres lignes.
   const reservationDepositPercent = reservation.items[0]?.depositPercent ?? null;
+  const reservationDepositFloor = reservation.items[0]?.depositFloorPercent ?? null;
 
   for (const l of input.lines) {
     if (l.action === "ADD") {
@@ -112,7 +113,7 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
       lenderId = lenderId ?? product.lenderId;
       if (lenderId !== product.lenderId) throw new AppError("MODIFICATION_NOT_ALLOWED", "Une demande de modification ne peut concerner qu'un seul loueur.");
       const mode = modeFor(product.lender);
-      lines.push({ action: "ADD", productId: product.id, productName: product.name, quantityBefore: 0, quantityAfter: l.quantity, startAfter: start, endAfter: end, unitPrice: product.unitPrice, commissionRateBps: rate, depositUnit: product.depositAmount, refundPrice: product.refundPrice, allowsExtraBilling: product.allowsExtraBilling, subtotalBefore: 0, subtotalAfter: subtotal, commissionBefore: 0, commissionAfter: applyBps(subtotal, rate), depositBefore: 0, depositAfter: depositFor(subtotal, l.quantity, product.depositAmount, reservationDepositPercent), paymentMode: mode, cashBefore: 0, cashAfter: cashFor(subtotal, applyBps(subtotal, rate), mode) });
+      lines.push({ action: "ADD", productId: product.id, productName: product.name, quantityBefore: 0, quantityAfter: l.quantity, startAfter: start, endAfter: end, unitPrice: product.unitPrice, commissionRateBps: rate, depositUnit: product.depositAmount, refundPrice: product.refundPrice, allowsExtraBilling: product.allowsExtraBilling, subtotalBefore: 0, subtotalAfter: subtotal, commissionBefore: 0, commissionAfter: applyBps(subtotal, rate), depositBefore: 0, depositAfter: depositFor(subtotal, l.quantity, product.depositAmount, reservationDepositPercent, { refundPrice: product.refundPrice, floorPercent: reservationDepositFloor }), paymentMode: mode, cashBefore: 0, cashAfter: cashFor(subtotal, applyBps(subtotal, rate), mode) });
       continue;
     }
 
@@ -143,7 +144,7 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
     if (hoursUntil(start, now) < deadlineHours) throw new AppError("MODIFICATION_DEADLINE_EXCEEDED", `La nouvelle date de début doit être au moins ${deadlineHours} h après maintenant.`);
     const subtotal = item.unitPrice * quantity * daysBetween(start, end);
     const commissionAfter = applyBps(subtotal, item.commissionRateBps);
-    lines.push({ action: "UPDATE", itemId: item.id, productId: item.productId, productName: item.productName, quantityBefore: item.quantity, quantityAfter: quantity, startBefore: item.startDate, endBefore: item.endDate, startAfter: start, endAfter: end, unitPrice: item.unitPrice, commissionRateBps: item.commissionRateBps, depositUnit, refundPrice: item.refundPrice, allowsExtraBilling: item.allowsExtraBilling, subtotalBefore: item.subtotal, subtotalAfter: subtotal, commissionBefore: item.commission, commissionAfter, depositBefore: item.depositAmount, depositAfter: depositFor(subtotal, quantity, depositUnit, item.depositPercent), paymentMode: item.paymentMode, cashBefore: item.cashDue, cashAfter: cashFor(subtotal, commissionAfter, item.paymentMode) });
+    lines.push({ action: "UPDATE", itemId: item.id, productId: item.productId, productName: item.productName, quantityBefore: item.quantity, quantityAfter: quantity, startBefore: item.startDate, endBefore: item.endDate, startAfter: start, endAfter: end, unitPrice: item.unitPrice, commissionRateBps: item.commissionRateBps, depositUnit, refundPrice: item.refundPrice, allowsExtraBilling: item.allowsExtraBilling, subtotalBefore: item.subtotal, subtotalAfter: subtotal, commissionBefore: item.commission, commissionAfter, depositBefore: item.depositAmount, depositAfter: depositFor(subtotal, quantity, depositUnit, item.depositPercent, { refundPrice: item.refundPrice, floorPercent: item.depositFloorPercent }), paymentMode: item.paymentMode, cashBefore: item.cashDue, cashAfter: cashFor(subtotal, commissionAfter, item.paymentMode) });
   }
 
   const remaining = reservation.items.filter((i) => !["CANCELLED", "REFUNDED"].includes(i.status) && !input.lines.some((l) => l.action === "REMOVE" && l.itemId === i.id));
@@ -474,7 +475,7 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
       const newSubtotal = line.subtotalAfter;
       const newCommission = applyBps(newSubtotal, rate);
       const depositUnit = item.quantity > 0 ? item.depositAmount / item.quantity : 0;
-      const newDeposit = depositFor(newSubtotal, line.quantityRequested, depositUnit, item.depositPercent);
+      const newDeposit = depositFor(newSubtotal, line.quantityRequested, depositUnit, item.depositPercent, { refundPrice: item.refundPrice, floorPercent: item.depositFloorPercent });
       await tx.reservationItem.update({ where: { id: item.id }, data: { quantity: line.quantityRequested, startDate: line.startAfter!, endDate: line.endAfter!, days: daysBetween(line.startAfter!, line.endAfter!), subtotal: newSubtotal, commission: newCommission, cashDue: line.cashAfter, depositAmount: newDeposit } });
       const deposit = await tx.deposit.findUnique({ where: { itemId: item.id } });
       if (deposit) await tx.deposit.update({ where: { id: deposit.id }, data: { amount: newDeposit, releaseDueDate: new Date(line.endAfter!.getTime() + settings["deposit.release_deadline_days"] * 86_400_000) } });
@@ -501,13 +502,14 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
           cashDue: line.cashAfter,
           depositAmount: 0,
           depositPercent: reservation.items[0]?.depositPercent ?? null,
+          depositFloorPercent: reservation.items[0]?.depositFloorPercent ?? null,
           refundPrice: (await tx.product.findUniqueOrThrow({ where: { id: line.productId } })).refundPrice,
           allowsExtraBilling: (await tx.product.findUniqueOrThrow({ where: { id: line.productId } })).allowsExtraBilling,
           status: siblingStatus,
         },
       });
       const product = await tx.product.findUniqueOrThrow({ where: { id: line.productId } });
-      const newDeposit = depositFor(line.subtotalAfter, line.quantityRequested, product.depositAmount, reservation.items[0]?.depositPercent ?? null);
+      const newDeposit = depositFor(line.subtotalAfter, line.quantityRequested, product.depositAmount, reservation.items[0]?.depositPercent ?? null, { refundPrice: product.refundPrice, floorPercent: reservation.items[0]?.depositFloorPercent ?? null });
       await tx.reservationItem.update({ where: { id: created.id }, data: { depositAmount: newDeposit } });
       await tx.deposit.create({ data: { itemId: created.id, amount: newDeposit, status: "HELD", heldAt: now, paymentId: payment?.id, releaseDueDate: new Date(line.endAfter!.getTime() + settings["deposit.release_deadline_days"] * 86_400_000) } });
       await tx.reservationStatusHistory.create({ data: { reservationId: reservation.id, itemId: created.id, toStatus: siblingStatus, actorId, note: "Ligne ajoutée par modification" } });

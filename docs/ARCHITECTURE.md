@@ -55,6 +55,7 @@ Chaque loueur choisit son mode (`Lender.paymentMode`) : `ONLINE_FULL` (tout en l
 Une caution par ligne. Son montant dépend du paramètre `deposit.mode` :
 
 - `PERCENT_OF_RENTAL` (par défaut) : `deposit.percent` (30 %) du sous-total de location de la ligne. La somme des lignes d'un loueur donne donc 30 % de son total. Le pourcentage est figé sur `ReservationItem.depositPercent` ; une modification (quantité, dates, ajout d'article) recalcule la caution avec ce même pourcentage.
+- Plancher `deposit.min_value_percent` (10 % par défaut, 0 pour le désactiver) : avec la caution en pourcentage, la caution d'une ligne ne descend jamais sous ce pourcentage de la valeur de remplacement (`refundPrice × quantité`). Il est figé sur `ReservationItem.depositFloorPercent`.
 - `FIXED_PER_PRODUCT` : caution par unité saisie par le loueur sur le produit (`depositPercent` reste nul).
 
 Le constat de retour impose `retourné + perdu = loué`. La retenue est `min(pertes × prix de remboursement + dommages déclarés, caution)` ; l'excédent n'est facturable que si le produit l'autorise (`allowsExtraBilling`). Sans dommage, la caution est libérée immédiatement ; sinon le client a `return.contest_window_hours` pour contester, passé ce délai le constat est réglé automatiquement. Les photos de preuve sont **privées** : servies par `/api/files/private/…` avec contrôle d'accès.

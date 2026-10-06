@@ -1,4 +1,4 @@
-import { applyBps, prorate, sum } from "@/lib/money";
+import { applyBps, formatFcfa, prorate, sum } from "@/lib/money";
 import { daysBetween } from "@/lib/dates";
 import type { FulfillmentType, LenderPaymentMode } from "@prisma/client";
 
@@ -7,12 +7,33 @@ export function depositPercentFrom(settings: { "deposit.mode": string; "deposit.
   return settings["deposit.mode"] === "PERCENT_OF_RENTAL" ? Math.min(100, Math.max(0, settings["deposit.percent"])) : null;
 }
 
+/** Plancher de caution en % de la valeur de remplacement (0 : aucun), seulement avec la caution en pourcentage. */
+export function depositFloorFrom(settings: { "deposit.mode": string; "deposit.min_value_percent": number }): number | null {
+  return settings["deposit.mode"] === "PERCENT_OF_RENTAL" ? Math.min(100, Math.max(0, settings["deposit.min_value_percent"])) : null;
+}
+
 /**
  * Caution d'une ligne : un pourcentage de la location (la somme des lignes d'un loueur donne le pourcentage de son total),
- * ou la caution par unité fixée sur le produit.
+ * jamais sous le plancher en % de la valeur de remplacement des articles ; ou la caution par unité fixée sur le produit.
  */
-export function depositFor(subtotal: number, quantity: number, depositUnit: number, depositPercent: number | null | undefined): number {
-  return depositPercent != null ? prorate(subtotal, depositPercent, 100) : Math.round(depositUnit * quantity);
+export function depositFor(
+  subtotal: number,
+  quantity: number,
+  depositUnit: number,
+  depositPercent: number | null | undefined,
+  floor: { refundPrice: number; floorPercent: number | null | undefined } = { refundPrice: 0, floorPercent: null },
+): number {
+  if (depositPercent == null) return Math.round(depositUnit * quantity);
+  const fromRental = prorate(subtotal, depositPercent, 100);
+  const minimum = floor.floorPercent ? prorate(floor.refundPrice * quantity, floor.floorPercent, 100) : 0;
+  return Math.max(fromRental, minimum);
+}
+
+/** Libellé court de la caution d'un produit, pour l'affichage (null : caution fixe à afficher en montant). */
+export function depositLabel(percent: number | null, floorPercent: number | null, refundPrice: number): string | null {
+  if (percent == null) return null;
+  const floorUnit = floorPercent ? prorate(refundPrice, floorPercent, 100) : 0;
+  return floorUnit > 0 ? `${percent} % de la location, minimum ${formatFcfa(floorUnit)} par unité` : `${percent} % de la location`;
 }
 
 /**
@@ -49,6 +70,8 @@ export type PricingInput = {
   minCashDeposit?: number;
   /** Caution en % de la location ; null ou absent : caution par unité du produit. */
   depositPercent?: number | null;
+  /** Plancher en % de la valeur de remplacement (prix de remboursement x quantité). */
+  depositFloorPercent?: number | null;
 };
 
 export type PricedLine = PricingInput & {
@@ -72,7 +95,7 @@ export function priceLine(input: PricingInput): PricedLine {
     days,
     subtotal,
     commission,
-    deposit: depositFor(subtotal, input.quantity, input.depositAmount, input.depositPercent),
+    deposit: depositFor(subtotal, input.quantity, input.depositAmount, input.depositPercent, { refundPrice: input.refundPrice, floorPercent: input.depositFloorPercent }),
     paymentMode,
     cashDue: subtotal - onlineRentalFor(subtotal, commission, paymentMode, input.minCashDeposit ?? 0),
   };

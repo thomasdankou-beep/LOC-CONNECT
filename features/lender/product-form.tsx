@@ -14,7 +14,7 @@ type Cat = { id: string; name: string; children: { id: string; name: string }[] 
 type City = { id: string; name: string };
 export type ProductDefaults = { id?: string; name: string; description: string; conditions: string; categoryId: string; cityId: string; unitPrice: number; stockQuantity: number; depositAmount: number; refundPrice: number; minDays: number; maxDays: number | null; allowsExtraBilling: boolean };
 
-export function ProductForm({ categories, cities, defaults, canPublish, depositPercent }: { categories: Cat[]; cities: City[]; defaults: ProductDefaults; canPublish: boolean; depositPercent: number | null }) {
+export function ProductForm({ categories, cities, defaults, canPublish, depositPercent, depositFloor }: { categories: Cat[]; cities: City[]; defaults: ProductDefaults; canPublish: boolean; depositPercent: number | null; depositFloor: number | null }) {
   const router = useRouter();
   const { toast } = useToast();
   const editing = Boolean(defaults.id);
@@ -100,7 +100,7 @@ export function ProductForm({ categories, cities, defaults, canPublish, depositP
               <div className="rounded-control border border-line bg-surface-2/60 px-3 py-2.5 text-sm">
                 <input type="hidden" name="depositAmount" value={defaults.depositAmount || 0} />
                 <p className="font-medium text-ink">Caution : {depositPercent} % de la location</p>
-                <p className="mt-0.5 text-muted">Calculée automatiquement par LOC&apos;CONNECT sur le montant de location de vos articles dans chaque commande.</p>
+                <p className="mt-0.5 text-muted">Calculée automatiquement par LOC&apos;CONNECT sur le montant de location de vos articles dans chaque commande{depositFloor ? <>, avec un minimum de {depositFloor} % du prix de remboursement par unité. Renseignez ce prix avec soin : il protège votre matériel cher</> : null}.</p>
               </div>
             ) : (
               <Input label="Caution par unité (FCFA)" name="depositAmount" type="number" min={0} defaultValue={defaults.depositAmount || 0} required error={fe("depositAmount")} />

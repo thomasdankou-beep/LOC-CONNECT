@@ -19,6 +19,8 @@ type Props = {
   deposit: number;
   /** Caution en % de la location (null : caution fixe par unité). */
   depositPercent: number | null;
+  /** Caution minimale par unité (plancher en % de la valeur du matériel), 0 si aucun. */
+  depositFloorUnit: number;
   stock: number;
   minDays: number;
   maxDays: number | null;
@@ -28,7 +30,7 @@ type Props = {
   initialEnd?: string;
 };
 
-export function BookingPanel({ productId, unitPrice, deposit, depositPercent, stock, minDays, maxDays, signedIn, canBook, initialStart, initialEnd }: Props) {
+export function BookingPanel({ productId, unitPrice, deposit, depositPercent, depositFloorUnit, stock, minDays, maxDays, signedIn, canBook, initialStart, initialEnd }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const [start, setStart] = useState<string | null>(initialStart ?? null);
@@ -51,7 +53,9 @@ export function BookingPanel({ productId, unitPrice, deposit, depositPercent, st
 
   const tooLong = maxDays != null && days > maxDays;
   const rental = unitPrice * qty * days;
-  const depositTotal = depositPercent != null ? Math.round((rental * depositPercent) / 100) : deposit * qty;
+  const fromRental = depositPercent != null ? Math.round((rental * depositPercent) / 100) : 0;
+  const floorApplies = depositPercent != null && days > 0 && depositFloorUnit * qty > fromRental;
+  const depositTotal = depositPercent != null ? Math.max(fromRental, depositFloorUnit * qty) : deposit * qty;
   const total = rental + depositTotal;
 
   async function add(go: boolean) {
@@ -111,7 +115,7 @@ export function BookingPanel({ productId, unitPrice, deposit, depositPercent, st
           <dd className="tabular-nums text-ink">{days > 0 ? formatFcfa(rental) : "À calculer"}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="flex items-center gap-1.5 text-muted"><ShieldCheck size={16} /> Caution{depositPercent != null ? ` (${depositPercent} %)` : ""}, restituée au retour</dt>
+          <dt className="flex items-center gap-1.5 text-muted"><ShieldCheck size={16} /> Caution{depositPercent != null ? (floorApplies ? " (minimum pour ce matériel)" : ` (${depositPercent} %)`) : ""}, restituée au retour</dt>
           <dd className="tabular-nums text-ink">{depositPercent != null && days === 0 ? "À calculer" : formatFcfa(depositTotal)}</dd>
         </div>
         <div className="flex justify-between border-t border-line pt-3 text-base font-semibold">

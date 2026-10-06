@@ -4,7 +4,7 @@ import { AppError, notFound } from "@/lib/errors";
 import { parseDate, daysBetween } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { availabilityForProduct, minAvailable, validateRentalPeriod } from "./availability";
-import { depositPercentFrom, effectivePaymentMode, priceLine } from "./pricing";
+import { depositFloorFrom, depositPercentFrom, effectivePaymentMode, priceLine } from "./pricing";
 import type { LenderPaymentMode } from "@prisma/client";
 
 export const cartItemInput = z.object({
@@ -128,7 +128,7 @@ export async function getCart(userId: string): Promise<CartView> {
     const p = item.product;
     const rate = p.lender.commissionRateBps ?? settings["commission.rate_bps"];
     const paymentMode = effectivePaymentMode(p.lender, settings);
-    const priced = priceLine({ productId: p.id, lenderId: p.lenderId, quantity: item.quantity, start: item.startDate, end: item.endDate, unitPrice: p.unitPrice, depositAmount: p.depositAmount, refundPrice: p.refundPrice, commissionRateBps: rate, paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings) });
+    const priced = priceLine({ productId: p.id, lenderId: p.lenderId, quantity: item.quantity, start: item.startDate, end: item.endDate, unitPrice: p.unitPrice, depositAmount: p.depositAmount, refundPrice: p.refundPrice, commissionRateBps: rate, paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings), depositFloorPercent: depositFloorFrom(settings) });
     const days = await availabilityForProduct(db, p.id, item.startDate, item.endDate);
     const free = minAvailable(days);
     const sellable = p.status === "PUBLISHED" && !p.deletedAt && p.lender.status === "APPROVED";

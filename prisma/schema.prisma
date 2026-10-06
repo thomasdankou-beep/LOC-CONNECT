@@ -762,33 +762,34 @@ model Reservation {
 }
 
 model ReservationItem {
-  id                 String            @id @default(cuid())
-  reservationId      String
-  reservation        Reservation       @relation(fields: [reservationId], references: [id])
-  productId          String
-  product            Product           @relation(fields: [productId], references: [id])
-  lenderId           String
-  lender             Lender            @relation(fields: [lenderId], references: [id])
-  productName        String
-  quantity           Int
-  startDate          DateTime          @db.Date
-  endDate            DateTime          @db.Date
-  days               Int
-  unitPrice          Int
-  subtotal           Int
-  commissionRateBps  Int
-  commission         Int
-  paymentMode        LenderPaymentMode @default(ONLINE_FULL) // figé à la réservation
-  cashDue            Int               @default(0) // part de la location réglée en espèces (le reste est payé en ligne)
-  depositAmount      Int
-  depositPercent     Int? // caution en % de la location, figée à la réservation (null : caution fixe par unité)
-  refundPrice        Int
-  allowsExtraBilling Boolean           @default(true)
-  status             ReservationStatus @default(PENDING_PAYMENT)
-  cancelledAt        DateTime?
-  refundedRental     Int               @default(0)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                  String            @id @default(cuid())
+  reservationId       String
+  reservation         Reservation       @relation(fields: [reservationId], references: [id])
+  productId           String
+  product             Product           @relation(fields: [productId], references: [id])
+  lenderId            String
+  lender              Lender            @relation(fields: [lenderId], references: [id])
+  productName         String
+  quantity            Int
+  startDate           DateTime          @db.Date
+  endDate             DateTime          @db.Date
+  days                Int
+  unitPrice           Int
+  subtotal            Int
+  commissionRateBps   Int
+  commission          Int
+  paymentMode         LenderPaymentMode @default(ONLINE_FULL) // figé à la réservation
+  cashDue             Int               @default(0) // part de la location réglée en espèces (le reste est payé en ligne)
+  depositAmount       Int
+  depositPercent      Int? // caution en % de la location, figée à la réservation (null : caution fixe par unité)
+  depositFloorPercent Int? // plancher en % de la valeur de remplacement, figé à la réservation
+  refundPrice         Int
+  allowsExtraBilling  Boolean           @default(true)
+  status              ReservationStatus @default(PENDING_PAYMENT)
+  cancelledAt         DateTime?
+  refundedRental      Int               @default(0)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   deposit        Deposit?
   returnReport   ReturnReport?
