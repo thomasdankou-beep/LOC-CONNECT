@@ -13,6 +13,7 @@ import { executeRefund, recordTransaction, type LenderImpact } from "./finance";
 import { notifyLender, notifyUsers } from "./notifications";
 import { transitionItems } from "./reservations";
 import { assertCashNotCollected, syncCashSettlement } from "./cash";
+import { issueCreditNote, type InvoiceLine } from "./invoices";
 
 export const cancelInput = z.object({
   itemIds: z.array(z.string()).optional(),
@@ -173,9 +174,21 @@ export async function cancelReservation(actor: Actor, reservationId: string, inp
     const remaining = await tx.reservationItem.count({ where: { reservationId, status: { notIn: ["CANCELLED", "REFUNDED"] } } });
     if (remaining === 0) await tx.reservation.update({ where: { id: reservationId }, data: { cancelledAt: new Date(), cancellationReason: input.reason } });
     for (const lenderId of new Set(items.map((i) => i.lenderId))) {
+      // Avoir : part remboursée en ligne et solde en espèces qui ne sera plus payé ; le reste reste dû (frais d'annulation).
+      const left = await tx.reservationItem.count({ where: { reservationId, lenderId, status: { notIn: ["CANCELLED", "REFUNDED"] } } });
+      const pendingCash = reservation.cashSettlements.find((c) => c.lenderId === lenderId && c.status === "PENDING");
+      const creditLines: InvoiceLine[] = plan.lines
+        .filter((l) => l.lenderId === lenderId)
+        .map((l) => {
+          const item = items.find((i) => i.id === l.itemId)!;
+          return { label: `Annulation : ${item.productName}`, detail: `${item.quantity} x, remboursement ${l.percent} %${item.cashDue > 0 ? ", solde en espèces annulé" : ""}`, quantity: 1, unitPrice: l.rentalRefund + item.cashDue, amount: l.rentalRefund + item.cashDue };
+        });
+      const deliveryCredit = (plan.deliveryRefunds.find((d) => d.lenderId === lenderId)?.refund ?? 0) + (left === 0 ? pendingCash?.deliveryDue ?? 0 : 0);
+      if (deliveryCredit > 0) creditLines.push({ label: "Livraison annulée", quantity: 1, unitPrice: deliveryCredit, amount: deliveryCredit });
+      await issueCreditNote(tx, { sourceKey: `CREDIT:CANCEL:${reservationId}:${lenderId}:${plan.lines.filter((l) => l.lenderId === lenderId).map((l) => l.itemId).sort().join(",")}`, reservationId, lenderId, lines: creditLines, reason: `Annulation (${plan.policyName}) : ${input.reason}` });
+
       await syncCashSettlement(tx, reservationId, lenderId);
       // Livraison annulée dès que toutes les lignes du loueur le sont (même sans frais remboursés en ligne).
-      const left = await tx.reservationItem.count({ where: { reservationId, lenderId, status: { notIn: ["CANCELLED", "REFUNDED"] } } });
       if (left === 0) await tx.delivery.updateMany({ where: { reservationId, lenderId, status: { in: ["PENDING", "PREPARING"] } }, data: { status: "FAILED", notes: "Annulée" } });
     }
 

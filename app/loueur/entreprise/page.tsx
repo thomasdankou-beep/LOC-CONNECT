@@ -49,7 +49,7 @@ async function ProfileTab({ lenderId, canEdit }: { lenderId: string; canEdit: bo
   const [l, settings] = await Promise.all([db.lender.findUniqueOrThrow({ where: { id: lenderId } }), getSettings()]);
   return (
     <>
-      <CompanyForm canEdit={canEdit} company={{ companyName: l.companyName, description: l.description ?? "", phone: l.phone ?? "", email: l.email ?? "", address: l.address ?? "", offersDelivery: l.offersDelivery, deliveryFeeLocal: l.deliveryFeeLocal, deliveryFeeRemote: l.deliveryFeeRemote }} />
+      <CompanyForm canEdit={canEdit} company={{ companyName: l.companyName, description: l.description ?? "", phone: l.phone ?? "", email: l.email ?? "", address: l.address ?? "", offersDelivery: l.offersDelivery, deliveryFeeLocal: l.deliveryFeeLocal, deliveryFeeRemote: l.deliveryFeeRemote, rccm: l.rccm ?? "", taxNumber: l.taxNumber ?? "", vatRegistered: l.vatRegistered }} />
       <PaymentModeForm mode={l.paymentMode} allowed={l.cashModeAllowed} globallyEnabled={settings["cash.enabled"]} minDeposit={formatFcfa(settings["cash.min_deposit"])} canEdit={canEdit} />
     </>
   );

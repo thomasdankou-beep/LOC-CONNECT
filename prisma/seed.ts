@@ -36,7 +36,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 const TABLES = [
   "ModificationLine", "ModificationRequest", "ReservationVersion", "BalanceEntry", "Payout", "LenderReimbursement", "FinancialTransaction", "Refund", "PaymentAllocation",
-  "CashSettlement", "ExtraCharge", "ReturnPhoto", "ReturnReport", "Deposit", "DeliveryProof", "Delivery", "Attachment", "DisputeMessage", "Dispute", "Review", "Payment", "WebhookEvent",
+  "Invoice", "InvoiceSequence", "CashSettlement", "ExtraCharge", "ReturnPhoto", "ReturnReport", "Deposit", "DeliveryProof", "Delivery", "Attachment", "DisputeMessage", "Dispute", "Review", "Payment", "WebhookEvent",
   "ReservationStatusHistory", "ReservationItem", "Reservation", "HoldItem", "Hold", "CartItem", "Cart", "Notification", "AuditLog", "Favorite", "Promotion", "Subscription",
   "AvailabilityBlock", "StockMovement", "ProductPriceHistory", "ProductPhoto", "Product", "LenderUnavailability", "LenderScore", "ClientScore", "ValidationAction",
   "LenderMember", "Lender", "UserRole", "RolePermission", "Role", "Permission", "Session", "PasswordResetToken", "User", "Category", "City", "CancellationRule", "CancellationPolicy", "Setting",
@@ -76,6 +76,7 @@ async function shiftBack(reservationId: string, days: number) {
   await run(`UPDATE "Deposit" SET ${ts("createdAt")}, "heldAt" = "heldAt" - interval '${d} days', "settledAt" = "settledAt" - interval '${d} days', "releaseDueDate" = "releaseDueDate" - interval '${d} days' WHERE "itemId" IN (SELECT id FROM "ReservationItem" WHERE "reservationId" = '${rid}')`);
   await run(`UPDATE "ReturnReport" SET ${ts("createdAt")}, "settledAt" = "settledAt" - interval '${d} days', "contestDeadline" = "contestDeadline" - interval '${d} days' WHERE "itemId" IN (SELECT id FROM "ReservationItem" WHERE "reservationId" = '${rid}')`);
   await run(`UPDATE "Hold" SET ${ts("createdAt")}, "expiresAt" = "expiresAt" - interval '${d} days' WHERE id IN (SELECT "holdId" FROM "Reservation" WHERE id = '${rid}')`);
+  await run(`UPDATE "Invoice" SET "issuedAt" = "issuedAt" - interval '${d} days' WHERE "reservationId" = '${rid}'`);
   await run(`UPDATE "CashSettlement" SET ${ts("createdAt")}, ${ts("updatedAt")}, "confirmedAt" = "confirmedAt" - interval '${d} days' WHERE "reservationId" = '${rid}'`);
   await run(`UPDATE "Notification" SET ${ts("createdAt")}, "sentAt" = "sentAt" - interval '${d} days' WHERE link LIKE '%${rid}%'`);
 }
@@ -151,6 +152,8 @@ async function main() {
         slug: slugify(l.company),
         companyName: l.company,
         rccm: `CI-ABJ-2023-B-${10000 + i * 137}`,
+        taxNumber: `${1800000 + i * 731}${"ABCDEFGHJK"[i % 10]}`,
+        vatRegistered: i % 3 === 0,
         description: l.description,
         phone: `+225 27 ${pad(20 + i)} ${pad(30 + i)} ${pad(40 + i)}`,
         email: `contact@${slugify(l.company)}.${EMAIL_DOMAIN}`,

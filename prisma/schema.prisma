@@ -122,6 +122,12 @@ enum CashSettlementStatus {
   CANCELLED
 }
 
+enum InvoiceKind {
+  RENTAL
+  DAMAGE
+  CREDIT_NOTE
+}
+
 enum PayoutStatus {
   PENDING
   PAID
@@ -439,6 +445,8 @@ model Lender {
   commissionRateBps Int?
   paymentMode       LenderPaymentMode @default(ONLINE_FULL)
   cashModeAllowed   Boolean           @default(false) // le mode espèces est ouvert par l'administration
+  vatRegistered     Boolean           @default(false) // assujetti à la TVA : ses factures affichent HT, TVA et TTC
+  taxNumber         String? // NCC (numéro de compte contribuable)
   payoutMethod      String?
   payoutAccount     String?
   createdAt         DateTime          @default(now())
@@ -457,6 +465,7 @@ model Lender {
   reviews          Review[]
   reimbursements   LenderReimbursement[]
   cashSettlements  CashSettlement[]
+  invoices         Invoice[]
   subscriptions    Subscription[]
   lenderScore      LenderScore?
   modifications    ModificationRequest[]
@@ -756,6 +765,7 @@ model Reservation {
   versions        ReservationVersion[]
   modifications   ModificationRequest[]
   cashSettlements CashSettlement[]
+  invoices        Invoice[]
 
   @@index([clientId, status])
   @@index([status, createdAt])
@@ -1001,6 +1011,37 @@ model WebhookEvent {
   createdAt      DateTime  @default(now())
 
   @@unique([provider, eventId])
+}
+
+/// Facture (location, casse et perte) ou avoir. Émise par LOC'CONNECT au nom et pour le compte du loueur.
+/// Immuable : le contenu est figé dans `data` à l'émission ; une correction passe par un avoir.
+model Invoice {
+  id                String      @id @default(cuid())
+  number            String      @unique // F-2026-000123 (factures) ou AV-2026-000004 (avoirs), sans trou
+  kind              InvoiceKind
+  sourceKey         String      @unique // événement à l'origine du document (idempotence)
+  reservationId     String
+  reservation       Reservation @relation(fields: [reservationId], references: [id])
+  lenderId          String
+  lender            Lender      @relation(fields: [lenderId], references: [id])
+  clientId          String
+  paymentId         String?
+  creditedInvoiceId String? // avoir : facture corrigée
+  vatRateBps        Int         @default(0)
+  totalHt           Int
+  vatAmount         Int         @default(0)
+  totalTtc          Int
+  data              Json
+  issuedAt          DateTime    @default(now())
+
+  @@index([clientId, issuedAt])
+  @@index([lenderId, issuedAt])
+  @@index([reservationId])
+}
+
+model InvoiceSequence {
+  key  String @id // préfixe et année, par exemple F-2026
+  last Int    @default(0)
 }
 
 /// Solde payé en espèces au loueur à la remise du matériel (un par loueur et par réservation).

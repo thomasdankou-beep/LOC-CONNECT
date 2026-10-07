@@ -46,6 +46,11 @@ export const SETTING_DEFS = {
   "ratelimit.api_per_minute": { default: 240, type: "int", group: "Sécurité", label: "Requêtes API par minute (par IP)", description: "Rate limiting général." },
   "security.max_failed_logins": { default: 5, type: "int", group: "Sécurité", label: "Échecs de connexion avant verrouillage", description: "Nombre d'échecs consécutifs avant verrouillage du compte." },
   "security.lockout_minutes": { default: 15, type: "int", group: "Sécurité", label: "Durée de verrouillage (minutes)", description: "Durée du verrouillage après trop d'échecs." },
+  "invoice.company_name": { default: "LOC'CONNECT SARL (à compléter)", type: "string", group: "Facturation", label: "Raison sociale", description: "En-tête des factures et avoirs." },
+  "invoice.company_address": { default: "Abidjan, Côte d'Ivoire (adresse à compléter)", type: "string", group: "Facturation", label: "Adresse du siège", description: "En-tête des factures et avoirs." },
+  "invoice.company_rccm": { default: "À compléter", type: "string", group: "Facturation", label: "RCCM de LOC'CONNECT", description: "Numéro au registre du commerce, affiché sur les factures." },
+  "invoice.company_ncc": { default: "À compléter", type: "string", group: "Facturation", label: "NCC de LOC'CONNECT", description: "Numéro de compte contribuable, affiché sur les factures." },
+  "invoice.vat_rate_bps": { default: 1800, type: "int", group: "Facturation", label: "Taux de TVA (points de base)", description: "1800 = 18 %. Appliqué aux factures des loueurs assujettis ; les prix affichés sont TTC. Figé sur chaque facture." },
   "site.support_phone": { default: "+225 27 20 00 00 00", type: "string", group: "Site", label: "Téléphone du support", description: "Affiché dans le pied de page et la page contact." },
   "site.support_email": { default: "support@locconnect.example", type: "string", group: "Site", label: "E-mail du support", description: "Affiché dans le pied de page et la page contact." },
 } as const satisfies Record<string, Def>;

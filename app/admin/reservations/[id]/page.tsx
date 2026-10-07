@@ -17,6 +17,7 @@ import { ArrowLeft, Truck } from "@/components/ui/icons";
 import { CancelButton } from "@/features/reservations/client-actions";
 import { AdminRefund, ModificationAdminActions, StatusCorrection } from "@/features/admin/reservation-actions";
 import { AdminCashActions } from "@/features/cash/cash-cards";
+import { ReservationInvoicesCard } from "@/features/invoices/reservation-invoices-card";
 
 export const metadata: Metadata = { title: "Réservation", robots: { index: false } };
 
@@ -73,6 +74,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                           {i.deposit && <span className="inline-flex items-center gap-2 rounded-control bg-surface-2/60 px-2.5 py-1">Caution {formatFcfa(i.deposit.amount)} <StatusBadge entry={DEPOSIT_STATUS[i.deposit.status]} />{i.deposit.frozen && <Badge tone="danger">Gelée</Badge>}</span>}
                           {i.returnReport && <span className="inline-flex items-center gap-2 rounded-control bg-surface-2/60 px-2.5 py-1">Constat : retenue {formatFcfa(i.returnReport.withheldAmount)} <StatusBadge entry={RETURN_REPORT_STATUS[i.returnReport.status]} /></span>}
+                          {i.returnReport && (i.returnReport.damagedQuantity > 0 || i.returnReport.lostQuantity > 0) && <Link href={`/factures/constat/${i.id}`} className="font-medium text-royal-ink hover:underline">Constat de casse et perte</Link>}
                         </div>
                       </div>
                     </li>
@@ -142,6 +144,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {r.cashTotal > 0 && <div className="flex justify-between font-semibold"><dt>En espèces aux loueurs</dt><dd><Money value={r.cashTotal} /></dd></div>}
             </dl>
           </Card>
+          <ReservationInvoicesCard actor={actor} reservationId={r.id} />
           <Card className="p-5">
             <h2 className="text-base font-semibold text-ink">Paiements</h2>
             <ul className="mt-3 space-y-4 text-sm">

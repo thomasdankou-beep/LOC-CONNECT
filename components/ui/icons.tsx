@@ -89,6 +89,7 @@ export {
   Stack,
   Wallet,
   Money,
+  Printer,
 } from "@phosphor-icons/react/dist/ssr";
 
 import {

@@ -14,6 +14,7 @@ import { addBalanceEntry, executeRefund, freezeUntil, recordTransaction } from "
 import { notifyUsers } from "../notifications";
 import { notifyLendersOfNewReservation, transitionItems } from "../reservations";
 import { cancelCashSettlements } from "../cash";
+import { issueRentalInvoices } from "../invoices";
 import { getProvider, signPayload, type WebhookEventPayload } from "./providers";
 
 export const paymentInput = z.object({
@@ -248,6 +249,7 @@ async function settleInitialPayment(tx: Tx, payment: Payment) {
   }
 
   await notifyUsers(tx, [payment.userId], { type: "payment.succeeded", title: `Paiement confirmé, réservation ${reservation.reference}`, body: `Votre paiement de ${formatFcfa(payment.amount)} a bien été reçu${payment.provider === "simulated" ? " (paiement simulé)" : ""}.`, link: `/mes-reservations/${reservation.id}` });
+  await issueRentalInvoices(tx, reservation.id, payment.id);
   await notifyLendersOfNewReservation(tx, reservation.id);
   await audit(tx, { userId: payment.userId, action: "payment.confirmed", entity: "Payment", entityId: payment.id, newValue: { amount: payment.amount, reservation: reservation.reference } });
   return { status: "PAID" as const };

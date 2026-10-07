@@ -173,6 +173,9 @@ export const companyInput = z.object({
   offersDelivery: z.boolean().optional(),
   deliveryFeeLocal: z.number().int().min(0).max(1_000_000).optional(),
   deliveryFeeRemote: z.number().int().min(0).max(1_000_000).optional(),
+  rccm: z.string().trim().max(60).optional(),
+  taxNumber: z.string().trim().max(40).optional(),
+  vatRegistered: z.boolean().optional(),
 });
 
 export async function updateCompany(actor: LenderActor, input: z.infer<typeof companyInput>) {

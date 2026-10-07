@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { can, type Actor } from "@/lib/auth/actor";
 import { DashboardShell } from "./dashboard-shell";
 import type { NavGroup } from "./sidebar-nav";
-import { Bank, Bell, Buildings, CalendarBlank, CalendarCheck, ChartLineUp, Gauge, GearSix, Package, Scales, ShieldCheck, Star, Stack, Truck, Users, ArrowCounterClockwise } from "@/components/ui/icons";
+import { Bank, Bell, Buildings, CalendarBlank, CalendarCheck, ChartLineUp, Gauge, GearSix, Package, Scales, ShieldCheck, Star, Stack, Truck, Users, ArrowCounterClockwise, Receipt } from "@/components/ui/icons";
 
 /** Navigation de l'espace loueur, filtrée selon les permissions du compte (propriétaire ou sous-compte). */
 export function LenderShell({ actor, children }: { actor: Actor; children: ReactNode }) {
@@ -32,6 +32,7 @@ export function LenderShell({ actor, children }: { actor: Actor; children: React
       items: filter([
         { href: "/loueur/revenus", label: "Revenus", icon: <ChartLineUp size={20} />, perms: ["FINANCE_VIEW"] },
         { href: "/loueur/versements", label: "Versements", icon: <Bank size={20} />, perms: ["PAYOUT_VIEW", "FINANCE_VIEW"] },
+        { href: "/loueur/factures", label: "Factures", icon: <Receipt size={20} />, perms: ["FINANCE_VIEW", "DEPOSIT_VIEW"] },
       ]),
     },
     {

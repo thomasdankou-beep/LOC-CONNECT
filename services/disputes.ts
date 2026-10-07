@@ -7,6 +7,7 @@ import { reference } from "@/lib/ids";
 import { can, type Actor } from "@/lib/auth/actor";
 import { DISPUTABLE_STATUSES } from "@/lib/state-machine";
 import { executeRefund } from "./finance";
+import { issueCreditNote } from "./invoices";
 import { notifyAdmins, notifyLender, notifyUsers } from "./notifications";
 import { transitionItems } from "./reservations";
 
@@ -163,6 +164,9 @@ export async function decideDispute(actor: Actor, disputeId: string, input: z.in
         if (!payment) throw new AppError("CONFLICT", "Aucun paiement remboursable pour ce litige.");
         const refund = await executeRefund(tx, { payment, kind: "DISPUTE", amount, reason: `Décision du litige ${dispute.reference}`, requestedById: actor.userId, impacts: dispute.lenderId ? [{ lenderId: dispute.lenderId, amount, itemId: dispute.itemId, note: `Litige ${dispute.reference}` }] : [] });
         resolutionAmount = refund?.amount ?? 0;
+        if (refund && dispute.lenderId) {
+          await issueCreditNote(tx, { sourceKey: `CREDIT:DISPUTE:${dispute.id}`, reservationId: dispute.reservationId, lenderId: dispute.lenderId, lines: [{ label: `Décision du litige ${dispute.reference}`, detail: dispute.reason, quantity: 1, unitPrice: refund.amount, amount: refund.amount }], reason: input.decision.slice(0, 200) });
+        }
       }
     }
 

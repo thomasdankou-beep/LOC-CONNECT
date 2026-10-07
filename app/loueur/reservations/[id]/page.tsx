@@ -19,6 +19,7 @@ import { ArrowLeft, MapPin, Phone, ShieldCheck, Truck } from "@/components/ui/ic
 import { AdvanceButton, ModificationDecision } from "@/features/lender/reservation-actions";
 import { nextLenderTarget } from "@/features/lender/helpers";
 import { LenderCashBox } from "@/features/cash/cash-cards";
+import { ReservationInvoicesCard } from "@/features/invoices/reservation-invoices-card";
 import { CASH_PERMISSIONS } from "@/services/cash";
 
 export const metadata: Metadata = { title: "Détail de la réservation", robots: { index: false } };
@@ -134,6 +135,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                               <StatusBadge entry={RETURN_REPORT_STATUS[report.status]} />
                             </div>
                             <p className="mt-1 text-muted">Retourné {report.returnedQuantity}, endommagé {report.damagedQuantity}, perdu {report.lostQuantity}{report.comment ? ` · ${report.comment}` : ""}</p>
+                            {(report.damagedQuantity > 0 || report.lostQuantity > 0) && <Link href={`/factures/constat/${i.id}`} className="mt-1 inline-block font-medium text-royal-ink hover:underline">{report.settledAt ? "Facture de casse et perte" : "Constat de casse et perte"}</Link>}
                             {report.status === "SUBMITTED" && report.contestDeadline && <p className="mt-1 text-muted">Le client peut contester jusqu&apos;au {formatDateTime(report.contestDeadline)}.</p>}
                           </div>
                         )}
@@ -211,6 +213,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </dl>
             <p className="mt-3 text-xs text-muted">{cashMode ? "Acompte en ligne + solde en espèces : la commission est déjà prélevée sur l'acompte. " : ""}{!cashMode || onlineNet > 0 ? `Versée ${freezeHours} h après la fin de la location, sauf litige ou contestation.` : ""}</p>
           </Card>
+          <ReservationInvoicesCard actor={actor} reservationId={r.id} />
           <Card className="p-5">
             <h2 className="text-base font-semibold text-ink">Suivi</h2>
             <ol className="mt-4 space-y-4 border-l border-line pl-4">

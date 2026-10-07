@@ -9,6 +9,7 @@ import { todayUTC } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { can, type Actor } from "@/lib/auth/actor";
 import { executeRefund } from "./finance";
+import { issueCreditNote } from "./invoices";
 import { notifyAdmins, notifyLender, notifyUsers } from "./notifications";
 import { resolveScope, transitionItems } from "./reservations";
 
@@ -167,6 +168,17 @@ export async function reportCashUnpaid(actor: Actor, reservationId: string, reas
     }
     await tx.delivery.updateMany({ where: { reservationId, lenderId: actor.lenderId, status: { in: ["PENDING", "PREPARING", "OUT_FOR_DELIVERY"] } }, data: { status: "FAILED", notes: "Solde en espèces non payé" } });
     const updated = await tx.cashSettlement.update({ where: { id: s.id }, data: { status: "UNPAID", reportedAt: now, reportedById: actor.userId, note: reason } });
+    // Avoir du solde jamais payé : seul l'acompte payé en ligne reste dû au titre de la facture.
+    await issueCreditNote(tx, {
+      sourceKey: `CREDIT:UNPAID:${s.id}`,
+      reservationId,
+      lenderId: actor.lenderId,
+      lines: [
+        ...items.filter((i) => i.cashDue > 0).map((i) => ({ label: `Solde en espèces non payé : ${i.productName}`, detail: `${i.quantity} x, location annulée à la remise`, quantity: 1, unitPrice: i.cashDue, amount: i.cashDue })),
+        ...(s.deliveryDue > 0 ? [{ label: "Livraison non effectuée", quantity: 1, unitPrice: s.deliveryDue, amount: s.deliveryDue }] : []),
+      ],
+      reason: "Solde en espèces non payé à la remise ; l'acompte payé en ligne est conservé.",
+    });
     const remaining = await tx.reservationItem.count({ where: { reservationId, status: { notIn: INACTIVE } } });
     if (remaining === 0) await tx.reservation.update({ where: { id: reservationId }, data: { cancelledAt: now, cancellationReason: "Solde en espèces non payé à la remise" } });
 

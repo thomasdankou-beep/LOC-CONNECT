@@ -50,6 +50,18 @@ Chaque loueur choisit son mode (`Lender.paymentMode`) : `ONLINE_FULL` (tout en l
 - **Annulation et modification** : seule la part en ligne est remboursée ou complétée ; le solde en espèces est recalculé ou annulé. Une fois le solde payé en espèces, l'annulation et la modification en ligne sont refusées (traitement par le support).
 - **Finance** : `PaymentAllocation.cashAmount` trace la part hors paiement ; aucune écriture de solde n'est créée pour l'argent encaissé directement par le loueur.
 
+## Facturation
+
+`services/invoices.ts`. LOC'CONNECT émet les documents **au nom et pour le compte de chaque loueur** (mandat de facturation). Modèle `Invoice` : numéro, type, contenu figé (`data`, JSON), totaux HT, TVA et TTC.
+
+- **Facture de location** : une par loueur, à la confirmation du paiement initial, puis une par complément de modification. Elle porte la location complète (y compris la part payée en espèces), la livraison, la caution à titre d'information (hors facture) et le règlement prévu.
+- **Facture de casse et perte** : émise dans `settleReport` quand les montants du constat sont arrêtés (acceptation, délai écoulé, décision). Indemnités hors champ de la TVA. Avant cela, `/factures/constat/:itemId` affiche un constat **provisoire**, sans numéro.
+- **Avoir** : réduction d'une facture de location, lors d'une annulation (part remboursée et solde en espèces annulé), d'une baisse par modification, d'un solde en espèces impayé ou d'une décision de litige.
+- **Numérotation** : `F-AAAA-NNNNNN` pour les factures, `AV-AAAA-NNNNNN` pour les avoirs, via `InvoiceSequence`, incrémentée dans la transaction d'émission : pas de trou, pas de doublon. `sourceKey` (unique) rend chaque émission idempotente.
+- **TVA** : les prix du site sont TTC. Pour un loueur assujetti (`Lender.vatRegistered`), la TVA (`invoice.vat_rate_bps`, 18 %) est extraite du TTC et figée sur la facture.
+- **Affichage** : `/factures/:id` (A4, « Télécharger en PDF » via l'impression du navigateur), `/factures/commande/:reservationId` (récapitulatif), listes `/mes-factures`, `/loueur/factures`, `/admin/factures`. La « situation au jour » (paiement, solde en espèces, complément, avoirs) est calculée à l'affichage et ne modifie pas la facture.
+- **En-tête** : paramètres `invoice.company_*` (raison sociale, adresse, RCCM, NCC).
+
 ## Caution et retour
 
 Une caution par ligne. Son montant dépend du paramètre `deposit.mode` :

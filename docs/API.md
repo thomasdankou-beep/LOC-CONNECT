@@ -1,6 +1,6 @@
 # API REST LOC'CONNECT
 
-Document généré par `npm run docs:api` à partir du code (159 opérations). Ne pas modifier à la main.
+Document généré par `npm run docs:api` à partir du code (161 opérations). Ne pas modifier à la main.
 
 ## Conventions
 
@@ -162,6 +162,13 @@ Document généré par `npm run docs:api` à partir du code (159 opérations). N
 | `GET` | `/api/holds/:id` | état du blocage et temps restant. |
 | `DELETE` | `/api/holds/:id` | libère le blocage de stock. |
 | `POST` | `/api/holds/:id/expire` | expiration immédiate (abandon du paiement). Le stock est libéré. |
+
+## /api/invoices
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/invoices` | factures et avoirs du périmètre de l'acteur (client, loueur ou administration). |
+| `GET` | `/api/invoices/:id` | contenu figé d'une facture ou d'un avoir. La version imprimable est servie par /factures/:id. |
 
 ## /api/lenders
 

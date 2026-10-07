@@ -14,6 +14,7 @@ import { notifyAdmins, notifyLender, notifyUsers } from "./notifications";
 import { snapshotOf, transitionItems } from "./reservations";
 import { depositFor, effectivePaymentMode, onlineRentalFor } from "./pricing";
 import { assertCashNotCollected, cashTotalFor, syncCashSettlement } from "./cash";
+import { issueModificationDocument } from "./invoices";
 
 const MODIFIABLE: ReservationStatus[] = ["PAID", "CONFIRMED", "READY"];
 const OPEN: ("PENDING_VALIDATION" | "ACCEPTED" | "PENDING_PAYMENT" | "PAID" | "REQUESTED")[] = ["REQUESTED", "PENDING_VALIDATION", "ACCEPTED", "PENDING_PAYMENT", "PAID"];
@@ -541,6 +542,7 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
   await tx.reservationStatusHistory.create({ data: { reservationId: reservation.id, toStatus: updated.status, actorId, note: `Modification appliquée (version ${version})` } });
 
   const result = await tx.modificationRequest.update({ where: { id: mod.id }, data: { status: "APPLIED", appliedAt: now }, include: { lines: true } });
+  await issueModificationDocument(tx, mod.id);
   await audit(tx, { userId: actorId, lenderId: mod.lenderId, action: "modification.apply", entity: "ModificationRequest", entityId: mod.id, oldValue: { total: fresh.total }, newValue: { total: updated.total, version } });
   await notifyUsers(tx, [mod.clientId], { type: "modification.applied", title: `Réservation ${reservation.reference} modifiée`, body: mod.refundToIssue > 0 ? `${formatFcfa(mod.refundToIssue)} vous sont remboursés.` : "Votre réservation a été mise à jour.", link: `/mes-reservations/${reservation.id}` });
   await notifyLender(tx, mod.lenderId, { type: "modification.applied", title: `Réservation ${reservation.reference} modifiée`, body: "Une modification a été appliquée.", link: `/loueur/reservations/${reservation.id}` }, "ORDER_VIEW");

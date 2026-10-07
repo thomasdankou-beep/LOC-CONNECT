@@ -21,6 +21,7 @@ import { AuxPaymentButton } from "@/features/reservations/aux-payment";
 import { CancelButton, DisputeButton, ModificationButton, ReturnReportActions, ReviewButton } from "@/features/reservations/client-actions";
 import { nextActionForClient } from "@/features/reservations/helpers";
 import { ClientCashBox } from "@/features/cash/cash-cards";
+import { ReservationInvoicesCard } from "@/features/invoices/reservation-invoices-card";
 
 
 export const metadata: Metadata = { title: "Détail de la réservation", robots: { index: false } };
@@ -131,6 +132,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
                                     ))}
                                   </div>
                                 )}
+                                {(report.damagedQuantity > 0 || report.lostQuantity > 0) && <Link href={`/factures/constat/${i.id}`} className="mt-2 inline-block font-medium text-royal-ink hover:underline">{report.settledAt ? "Facture de casse et perte" : "Voir le constat de casse et perte"}</Link>}
                                 {report.status === "SUBMITTED" && report.contestDeadline && report.contestDeadline > new Date() && (
                                   <div className="mt-3"><ReturnReportActions itemId={i.id} deadline={report.contestDeadline.toISOString()} /></div>
                                 )}
@@ -221,6 +223,8 @@ export default async function ReservationDetailPage({ params }: { params: Promis
               )}
             </dl>
           </Card>
+
+          <ReservationInvoicesCard actor={actor} reservationId={r.id} />
 
           <Card className="p-5">
             <h2 className="text-base font-semibold text-ink">Paiements et remboursements</h2>

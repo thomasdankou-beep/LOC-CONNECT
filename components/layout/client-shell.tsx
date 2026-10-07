@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { Actor } from "@/lib/auth/actor";
 import { DashboardShell } from "./dashboard-shell";
 import type { NavGroup } from "./sidebar-nav";
-import { Bell, CalendarCheck, CreditCard, Gauge, Heart, Lifebuoy, Scales, Star, UserCircle, ArrowCounterClockwise } from "@/components/ui/icons";
+import { Bell, CalendarCheck, CreditCard, Gauge, Heart, Lifebuoy, Scales, Star, UserCircle, ArrowCounterClockwise, Receipt } from "@/components/ui/icons";
 
 const GROUPS: NavGroup[] = [
   {
@@ -11,6 +11,7 @@ const GROUPS: NavGroup[] = [
       { href: "/mes-reservations", label: "Mes réservations", icon: <CalendarCheck size={20} /> },
       { href: "/mes-paiements", label: "Mes paiements", icon: <CreditCard size={20} /> },
       { href: "/mes-remboursements", label: "Mes remboursements", icon: <ArrowCounterClockwise size={20} /> },
+      { href: "/mes-factures", label: "Mes factures", icon: <Receipt size={20} /> },
     ],
   },
   {

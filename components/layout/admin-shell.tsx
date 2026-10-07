@@ -50,6 +50,7 @@ export async function AdminShell({ actor, children }: { actor: Actor; children: 
         { href: "/admin/paiements", label: "Paiements", icon: <CreditCard size={20} />, perm: "ADMIN_PAYMENTS" },
         { href: "/admin/especes", label: "Paiements en espèces", icon: <Money size={20} />, perm: "ADMIN_PAYMENTS", badge: lockedCash },
         { href: "/admin/remboursements", label: "Remboursements", icon: <Receipt size={20} />, perm: "ADMIN_REFUNDS" },
+        { href: "/admin/factures", label: "Factures et avoirs", icon: <Receipt size={20} />, perm: "ADMIN_PAYMENTS" },
         { href: "/admin/commissions", label: "Commissions", icon: <Percent size={20} />, perm: "ADMIN_COMMISSIONS" },
         { href: "/admin/cautions", label: "Cautions", icon: <ShieldCheck size={20} />, perm: "ADMIN_DEPOSITS" },
         { href: "/admin/versements", label: "Versements", icon: <Bank size={20} />, perm: "ADMIN_PAYOUTS" },

@@ -7,17 +7,18 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Checkbox, Input, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/states";
 
-type Company = { companyName: string; description: string; phone: string; email: string; address: string; offersDelivery: boolean; deliveryFeeLocal: number; deliveryFeeRemote: number };
+type Company = { companyName: string; description: string; phone: string; email: string; address: string; offersDelivery: boolean; deliveryFeeLocal: number; deliveryFeeRemote: number; rccm: string; taxNumber: string; vatRegistered: boolean };
 
 export function CompanyForm({ company, canEdit }: { company: Company; canEdit: boolean }) {
   const { run, pending, error } = useAction();
   const [delivery, setDelivery] = useState(company.offersDelivery);
+  const [vat, setVat] = useState(company.vatRegistered);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const str = (k: string) => String(fd.get(k) ?? "").trim();
-    await run("/api/lenders/me", { method: "PATCH", body: { companyName: str("companyName"), description: str("description"), phone: str("phone"), email: str("email") || undefined, address: str("address"), offersDelivery: delivery, deliveryFeeLocal: Number(str("deliveryFeeLocal") || 0), deliveryFeeRemote: Number(str("deliveryFeeRemote") || 0) } }, { success: "Entreprise mise à jour", silentError: true });
+    await run("/api/lenders/me", { method: "PATCH", body: { companyName: str("companyName"), description: str("description"), phone: str("phone"), email: str("email") || undefined, address: str("address"), offersDelivery: delivery, deliveryFeeLocal: Number(str("deliveryFeeLocal") || 0), deliveryFeeRemote: Number(str("deliveryFeeRemote") || 0), rccm: str("rccm"), taxNumber: str("taxNumber"), vatRegistered: vat } }, { success: "Entreprise mise à jour", silentError: true });
   }
   const fe = (n: string) => error?.details?.find((d) => d.path === n)?.message;
 
@@ -41,6 +42,17 @@ export function CompanyForm({ company, canEdit }: { company: Company; canEdit: b
                 <Input label="Frais de livraison, autre ville (FCFA)" name="deliveryFeeRemote" type="number" min={0} defaultValue={company.deliveryFeeRemote} error={fe("deliveryFeeRemote")} />
               </div>
             )}
+          </div>
+          <div className="rounded-control border border-line p-4">
+            <p className="text-sm font-medium text-ink">Informations de facturation</p>
+            <p className="mt-0.5 text-sm text-muted">Elles figurent sur les factures que LOC&apos;CONNECT émet en votre nom.</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Input label="RCCM" name="rccm" defaultValue={company.rccm} placeholder="CI-ABJ-2024-B-12345" error={fe("rccm")} />
+              <Input label="NCC (compte contribuable)" name="taxNumber" defaultValue={company.taxNumber} error={fe("taxNumber")} />
+            </div>
+            <div className="mt-4">
+              <Checkbox label={<><span className="font-medium">Mon entreprise est assujettie à la TVA</span><span className="block text-muted">Vos factures affichent alors le montant HT, la TVA et le TTC. Vos prix restent affichés TTC.</span></>} checked={vat} onChange={(e) => setVat(e.target.checked)} />
+            </div>
           </div>
         </fieldset>
         {error && !error.details?.length && <Notice tone="danger">{error.message}</Notice>}

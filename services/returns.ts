@@ -8,6 +8,7 @@ import { addHours } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { can, type Actor } from "@/lib/auth/actor";
 import { addBalanceEntry, executeRefund, recordTransaction } from "./finance";
+import { issueDamageInvoice } from "./invoices";
 import { notifyLender, notifyUsers, notifyAdmins } from "./notifications";
 import { transitionItems } from "./reservations";
 
@@ -153,6 +154,7 @@ export async function settleReport(tx: Tx, reportId: string, opts: { actorId?: s
   }
 
   await tx.balanceEntry.updateMany({ where: { itemId: item.id, blocked: true }, data: { blocked: false } });
+  await issueDamageInvoice(tx, reportId, { accepted: totalDamage, withheld, released, extraCharge: extra, resolution: opts.resolved ? opts.note ?? null : null });
   await tx.returnReport.update({ where: { id: reportId }, data: { status: opts.resolved ? "RESOLVED" : "VALIDATED", settledAt: now, withheldAmount: withheld, extraChargeAmount: extra } });
   await transitionItems(tx, item.reservationId, "COMPLETED", { actorId: opts.actorId, itemIds: [item.id], onlyFrom: ["RETURNED"], note: "Caution réglée" });
 
