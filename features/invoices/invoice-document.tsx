@@ -75,17 +75,29 @@ export function InvoiceDocument(p: Props) {
             <h1 className="text-[20px] font-bold uppercase tracking-wide text-[#0f1b3d]">{p.title}</h1>
             <p className="mt-1 text-[14px] font-semibold">{p.number ? `N° ${p.number}` : "Sans numéro (provisoire)"}</p>
             <p>Date : {formatDate(p.issuedAt)}</p>
-            <p>Réservation : <span className="font-mono">{d.reservation.reference}</span></p>
-            <p>{d.reservation.fulfillment === "DELIVERY" ? "Livraison" : "Retrait chez le loueur"}</p>
+            {d.reservation && (
+              <>
+                <p>Réservation : <span className="font-mono">{d.reservation.reference}</span></p>
+                <p>{d.reservation.fulfillment === "DELIVERY" ? "Livraison" : "Retrait chez le loueur"}</p>
+              </>
+            )}
           </div>
         </header>
 
-        <p className="mt-4 text-[11px] text-[#5b6478]">Document émis par {d.platform.name} au nom et pour le compte de {d.seller.name}, dans le cadre d&apos;un mandat de facturation.</p>
-
-        <section className="mt-3 grid gap-3 sm:grid-cols-2 print:grid-cols-2">
-          <Party title="Loueur" party={d.seller} extra={<p className="mt-1 text-[11px] text-[#5b6478]">{d.seller.vatRegistered ? "Assujetti à la TVA" : "Non assujetti à la TVA"}</p>} />
-          <Party title="Client" party={d.buyer} />
-        </section>
+        {d.issuer === "PLATFORM" ? (
+          <section className="mt-5 grid gap-3 sm:grid-cols-2 print:grid-cols-2">
+            <Party title="Émetteur" party={d.seller} extra={<p className="mt-1 text-[11px] text-[#5b6478]">{d.seller.vatRegistered ? "Assujetti à la TVA" : "Non assujetti à la TVA"}</p>} />
+            <Party title="Loueur facturé" party={d.buyer} />
+          </section>
+        ) : (
+          <>
+            <p className="mt-4 text-[11px] text-[#5b6478]">Document émis par {d.platform.name} au nom et pour le compte de {d.seller.name}, dans le cadre d&apos;un mandat de facturation.</p>
+            <section className="mt-3 grid gap-3 sm:grid-cols-2 print:grid-cols-2">
+              <Party title="Loueur" party={d.seller} extra={<p className="mt-1 text-[11px] text-[#5b6478]">{d.seller.vatRegistered ? "Assujetti à la TVA" : "Non assujetti à la TVA"}</p>} />
+              <Party title="Client" party={d.buyer} />
+            </section>
+          </>
+        )}
 
         {d.credited && (
           <p className="mt-4 rounded-[8px] bg-[#eef2fb] px-3 py-2">
@@ -127,7 +139,7 @@ export function InvoiceDocument(p: Props) {
             ) : (
               <>
                 <div className="flex justify-between border-t border-[#0f1b3d] pt-1 text-[14px] font-bold text-[#0f1b3d]"><dt>{d.credited ? "Total de l'avoir" : "Total"}</dt><dd className="tabular-nums">{formatFcfa(p.totalTtc)}</dd></div>
-                {!d.damage && <p className="text-right text-[11px] text-[#5b6478]">TVA non applicable (loueur non assujetti)</p>}
+                {!d.damage && <p className="text-right text-[11px] text-[#5b6478]">TVA non applicable ({d.issuer === "PLATFORM" ? "émetteur" : "loueur"} non assujetti)</p>}
               </>
             )}
           </dl>

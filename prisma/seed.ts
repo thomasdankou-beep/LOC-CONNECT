@@ -23,6 +23,8 @@ import { runPayout } from "../services/payouts";
 import { runMaintenance } from "../services/maintenance";
 import { updateDelivery } from "../services/deliveries";
 import { confirmCashPayment } from "../services/cash";
+import { planTerms } from "../services/plans";
+import { getSettings } from "../lib/settings";
 import { computeClientScore, computeLenderScore } from "../services/scores";
 import { createPromotion } from "../services/admin";
 import { storage } from "../lib/storage";
@@ -170,7 +172,13 @@ async function main() {
         payoutAccount: approved ? `07${pad(10 + i)}${pad(20 + i)}${pad(30 + i)}` : null,
       },
     });
-    await db.subscription.create({ data: { lenderId: lender.id, plan: l.plan ?? "FREE", price: l.plan === "PREMIUM" ? 45000 : l.plan === "PRO" ? 20000 : 0, startsAt: addDays(new Date(), -60), endsAt: l.plan ? addDays(new Date(), 300) : null } });
+    // Formules de démonstration : partenaires de lancement, période en cours offerte, renouvelée dans 20 jours au prix en vigueur.
+    if (l.plan) {
+      const terms = planTerms(await getSettings());
+      const renews = addDays(new Date(), 20);
+      await db.subscription.create({ data: { lenderId: lender.id, plan: l.plan, price: terms[l.plan].price, rateBps: terms[l.plan].rateBps, periodFee: 0, note: "Partenaire de lancement : période offerte", startsAt: addDays(new Date(), -10), endsAt: renews } });
+      await db.lender.update({ where: { id: lender.id }, data: { plan: l.plan, planRenewsAt: renews } });
+    }
     const productIds: string[] = [];
     for (const [pi, [name, sub, description, unitPrice, stock, deposit, refundPrice, extra]] of l.products.entries()) {
       const status = !approved ? "DRAFT" : i === 1 && pi === 3 ? "PENDING_REVIEW" : i === 8 && pi === 3 ? "PENDING_REVIEW" : "PUBLISHED";

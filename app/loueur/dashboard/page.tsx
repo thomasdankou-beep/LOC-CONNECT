@@ -8,6 +8,7 @@ import { addDays, formatDate, todayUTC } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { RESERVATION_STATUS } from "@/lib/labels";
 import { lenderBalance, lenderRevenueByMonth } from "@/services/payouts";
+import { PLAN_LABEL, simulatePlans } from "@/services/plans";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { KpiCard } from "@/components/ui/misc";
@@ -27,6 +28,7 @@ export default async function LenderDashboard({ searchParams }: { searchParams: 
   const showFinance = can(actor, "FINANCE_VIEW");
   const freezeHours = (await getSettings())["payout.freeze_hours"];
 
+  const planHint = can(actor, "COMPANY_MANAGE") || can(actor, "FINANCE_VIEW") ? await simulatePlans(actor.lenderId) : null;
   const [balance, revenue, upcoming, toValidate, toReturn, deliveriesToday, mods, openDisputes, products, deposits, stock] = await Promise.all([
     showFinance ? lenderBalance(lenderId) : null,
     showFinance ? lenderRevenueByMonth(lenderId, 6) : [],
@@ -54,6 +56,13 @@ export default async function LenderDashboard({ searchParams }: { searchParams: 
     <>
       {sp.denied && <div className="mb-6"><Notice tone="warning">Votre rôle ne permet pas d&apos;accéder à cette page.</Notice></div>}
       <PageHeader title="Tableau de bord" description="Activité, stock, retours et montants en attente de versement." />
+      {planHint && planHint.saving > 0 && (
+        <Link href="/loueur/abonnement" className="mb-6 block transition hover:-translate-y-0.5">
+          <Notice tone="success" title={`Économisez ${formatFcfa(planHint.saving)} par mois`}>
+            Sur vos 30 derniers jours ({formatFcfa(planHint.volume)} de locations), la formule {PLAN_LABEL[planHint.best]} vous aurait coûté moins cher que votre formule {PLAN_LABEL[planHint.current]}. Voir les formules.
+          </Notice>
+        </Link>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {balance && <KpiCard primary label="Disponible au versement" value={formatFcfa(balance.payable)} hint={`${formatFcfa(balance.frozen)} gelés en attente de fin de contestation`} icon={<Bank size={20} />} />}

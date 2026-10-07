@@ -33,6 +33,7 @@ export function LenderShell({ actor, children }: { actor: Actor; children: React
         { href: "/loueur/revenus", label: "Revenus", icon: <ChartLineUp size={20} />, perms: ["FINANCE_VIEW"] },
         { href: "/loueur/versements", label: "Versements", icon: <Bank size={20} />, perms: ["PAYOUT_VIEW", "FINANCE_VIEW"] },
         { href: "/loueur/factures", label: "Factures", icon: <Receipt size={20} />, perms: ["FINANCE_VIEW", "DEPOSIT_VIEW"] },
+        { href: "/loueur/abonnement", label: "Abonnement", icon: <Star size={20} />, perms: ["COMPANY_MANAGE", "FINANCE_VIEW"] },
       ]),
     },
     {

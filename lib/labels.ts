@@ -170,6 +170,7 @@ export const BALANCE_KIND: Record<BalanceEntryKind, string> = {
   RECOVERY_OFFSET: "Compensation de recouvrement",
   MANUAL_RECOVERY: "Recouvrement manuel",
   PAYOUT_ADJUSTMENT: "Ajustement de versement",
+  SUBSCRIPTION_FEE: "Abonnement (formule Pro ou Premium)",
 };
 
 export const PAYOUT_METHOD: Record<string, string> = {

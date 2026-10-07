@@ -15,6 +15,7 @@ import { snapshotOf, transitionItems } from "./reservations";
 import { depositFor, effectivePaymentMode, onlineRentalFor } from "./pricing";
 import { assertCashNotCollected, cashTotalFor, syncCashSettlement } from "./cash";
 import { issueModificationDocument } from "./invoices";
+import { commissionRateFor } from "./plans";
 
 const MODIFIABLE: ReservationStatus[] = ["PAID", "CONFIRMED", "READY"];
 const OPEN: ("PENDING_VALIDATION" | "ACCEPTED" | "PENDING_PAYMENT" | "PAID" | "REQUESTED")[] = ["REQUESTED", "PENDING_VALIDATION", "ACCEPTED", "PENDING_PAYMENT", "PAID"];
@@ -109,7 +110,7 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
       const end = parseDate(l.endDate);
       validateRentalPeriod(settings, product, { quantity: l.quantity, start, end }, now);
       if (hoursUntil(start, now) < deadlineHours) throw new AppError("MODIFICATION_DEADLINE_EXCEEDED", `L'ajout doit se faire au moins ${deadlineHours} h avant le début de la location.`);
-      const rate = product.lender.commissionRateBps ?? settings["commission.rate_bps"];
+      const rate = commissionRateFor(product.lender, settings);
       const subtotal = product.unitPrice * l.quantity * daysBetween(start, end);
       lenderId = lenderId ?? product.lenderId;
       if (lenderId !== product.lenderId) throw new AppError("MODIFICATION_NOT_ALLOWED", "Une demande de modification ne peut concerner qu'un seul loueur.");
@@ -462,8 +463,10 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
   }
 
   // 2. Lignes, caution et solde du loueur.
+  const modLender = await tx.lender.findUniqueOrThrow({ where: { id: mod.lenderId } });
   for (const line of mod.lines) {
-    const rate = reservation.items.find((i) => i.id === line.itemId)?.commissionRateBps ?? settings["commission.rate_bps"];
+    // Ligne existante : taux figé ; article ajouté : taux actuel du loueur (sa formule), comme dans le calcul de la demande.
+    const rate = reservation.items.find((i) => i.id === line.itemId)?.commissionRateBps ?? commissionRateFor(modLender, settings);
     if (line.action === "REMOVE" && line.itemId) {
       const item = reservation.items.find((i) => i.id === line.itemId)!;
       const deposit = await tx.deposit.findUnique({ where: { itemId: item.id } });

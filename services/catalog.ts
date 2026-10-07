@@ -23,7 +23,7 @@ export type ProductSearch = {
 
 export const productCardInclude = {
   photos: { orderBy: { position: "asc" }, take: 1 },
-  lender: { select: { id: true, slug: true, companyName: true, ratingAvg: true, status: true } },
+  lender: { select: { id: true, slug: true, companyName: true, ratingAvg: true, status: true, plan: true } },
   category: { select: { name: true, slug: true } },
   city: { select: { name: true, slug: true } },
 } satisfies Prisma.ProductInclude;
@@ -47,7 +47,8 @@ function orderBy(sort: ProductSort | undefined): Prisma.ProductOrderByWithRelati
     case "rating":
       return [{ ratingAvg: "desc" }, { reviewCount: "desc" }];
     default:
-      return [{ popularity: "desc" }, { ratingAvg: "desc" }];
+      // Pertinence : les loueurs Premium puis Pro remontent (avantage de leur formule), puis popularité et notes.
+      return [{ lender: { plan: "desc" } }, { popularity: "desc" }, { ratingAvg: "desc" }];
   }
 }
 
@@ -149,11 +150,15 @@ export async function popularProducts(take = 8): Promise<ProductCard[]> {
   return db.product.findMany({ where: PUBLIC_WHERE, include: productCardInclude, orderBy: [{ popularity: "desc" }, { ratingAvg: "desc" }], take });
 }
 
+/** Page d'accueil : mises en avant payées d'abord, complétées par les produits des loueurs Premium (avantage de la formule). */
 export async function featuredProducts(take = 4): Promise<ProductCard[]> {
   const ids = [...(await activePromotionProductIds())];
-  if (ids.length === 0) return [];
-  const rows = await db.product.findMany({ where: { ...PUBLIC_WHERE, id: { in: ids } }, include: productCardInclude, take });
-  return rows.map((r) => ({ ...r, featured: true }));
+  const promoted = ids.length ? await db.product.findMany({ where: { ...PUBLIC_WHERE, id: { in: ids } }, include: productCardInclude, take }) : [];
+  const premium =
+    promoted.length < take
+      ? await db.product.findMany({ where: { ...PUBLIC_WHERE, id: { notIn: promoted.map((p) => p.id) }, lender: { status: "APPROVED", plan: "PREMIUM" } }, include: productCardInclude, orderBy: [{ popularity: "desc" }, { ratingAvg: "desc" }], take: take - promoted.length })
+      : [];
+  return [...promoted, ...premium].map((r) => ({ ...r, featured: true }));
 }
 
 /** Catégories racines avec leurs sous-catégories ; `_count.products` agrège les produits publiés de la racine et de ses sous-catégories. */

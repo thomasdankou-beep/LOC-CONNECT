@@ -10,6 +10,7 @@ import { assertAvailable, validateRentalPeriod } from "./availability";
 import { computeTotals, depositFloorFrom, depositPercentFrom, effectivePaymentMode, priceLine, type LenderDeliveryTerms } from "./pricing";
 import { notifyLender, notifyUsers } from "./notifications";
 import { assertCashSettled, syncCashSettlement } from "./cash";
+import { commissionRateFor } from "./plans";
 
 const RESERVATION_ITEM_INCLUDE = {
   product: { select: { id: true, slug: true, name: true, photos: { orderBy: { position: "asc" as const }, take: 1 } } },
@@ -49,7 +50,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
     const terms = new Map<string, LenderDeliveryTerms>();
     for (const i of hold.items) {
       const l = i.product.lender;
-      terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, commissionRateBps: l.commissionRateBps ?? settings["commission.rate_bps"], paymentMode: effectivePaymentMode(l, settings) });
+      terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, commissionRateBps: commissionRateFor(l, settings), paymentMode: effectivePaymentMode(l, settings) });
     }
     if (hold.fulfillmentType === "DELIVERY") {
       for (const t of terms.values()) {

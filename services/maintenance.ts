@@ -6,6 +6,7 @@ import { expireHolds } from "./holds";
 import { escalateAndExpireModifications } from "./modifications";
 import { settleExpiredReports } from "./returns";
 import { transitionItems } from "./reservations";
+import { renewPlans } from "./plans";
 
 let lastRun = 0;
 
@@ -39,8 +40,9 @@ export async function runMaintenance(now = new Date()) {
 
   const settled = await settleExpiredReports(now);
   const modifications = await escalateAndExpireModifications(now);
+  const plans = await renewPlans(now);
   const emails = await deliverPending();
-  const result = { expiredHolds: expired, started, dueBack, settledReturns: settled, escalated: modifications.escalated, expiredModifications: modifications.expired, emails };
+  const result = { expiredHolds: expired, started, dueBack, settledReturns: settled, escalated: modifications.escalated, expiredModifications: modifications.expired, plansRenewed: plans.renewed, plansDowngraded: plans.downgraded, emails };
   if (Object.values(result).some((n) => n > 0)) await audit(db, { action: "maintenance.run", entity: "System", newValue: result });
   lastRun = Date.now();
   return result;

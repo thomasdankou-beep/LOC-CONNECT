@@ -21,10 +21,12 @@ export type InvoiceParty = { name: string; address?: string | null; phone?: stri
 
 export type InvoiceData = {
   title: string;
+  /** PLATFORM : facture propre de LOC'CONNECT (abonnement), adressée au loueur ; sinon émise au nom du loueur (mandat). */
+  issuer?: "MANDATE" | "PLATFORM";
   platform: InvoiceParty;
   seller: InvoiceParty & { vatRegistered: boolean };
   buyer: InvoiceParty;
-  reservation: { reference: string; fulfillment: "PICKUP" | "DELIVERY"; createdAt: string };
+  reservation?: { reference: string; fulfillment: "PICKUP" | "DELIVERY"; createdAt: string };
   lines: InvoiceLine[];
   /** Facture de location : caution versée (dépôt de garantie, hors facture). */
   deposit?: number;
@@ -38,7 +40,7 @@ export type InvoiceData = {
   notes: string[];
 };
 
-export const INVOICE_TITLE: Record<InvoiceKind, string> = { RENTAL: "Facture de location", DAMAGE: "Facture de casse et perte", CREDIT_NOTE: "Avoir" };
+export const INVOICE_TITLE: Record<InvoiceKind, string> = { RENTAL: "Facture de location", DAMAGE: "Facture de casse et perte", CREDIT_NOTE: "Avoir", SUBSCRIPTION: "Facture d'abonnement" };
 
 /** Séquence sans trou par préfixe et par année : le compteur est incrémenté dans la transaction qui émet le document. */
 async function nextNumber(tx: Tx, prefix: "F" | "AV", now = new Date()): Promise<string> {
@@ -71,7 +73,7 @@ async function parties(tx: Tx, reservationId: string, lenderId: string) {
 
 async function createInvoice(
   tx: Tx,
-  p: { kind: InvoiceKind; sourceKey: string; reservationId: string; lenderId: string; clientId: string; paymentId?: string | null; creditedInvoiceId?: string | null; vatRateBps: number; totalTtc: number; data: InvoiceData },
+  p: { kind: InvoiceKind; sourceKey: string; reservationId: string | null; lenderId: string; clientId: string | null; paymentId?: string | null; creditedInvoiceId?: string | null; vatRateBps: number; totalTtc: number; data: InvoiceData },
 ): Promise<{ invoice: Invoice; created: boolean }> {
   const existing = await tx.invoice.findUnique({ where: { sourceKey: p.sourceKey } });
   if (existing) return { invoice: existing, created: false };
@@ -258,6 +260,34 @@ export async function issueDamageInvoice(tx: Tx, reportId: string, amounts: { ac
   return invoice;
 }
 
+/** Facture d'abonnement : émise par LOC'CONNECT en son nom propre, adressée au loueur, pour une période de formule. */
+export async function issueSubscriptionInvoice(tx: Tx, p: { subscriptionId: string; lenderId: string; plan: string; monthlyPrice: number; amount: number; periodStart: Date; periodEnd: Date; detail: string }) {
+  if (p.amount <= 0) return null;
+  const settings = await getSettings(tx);
+  const lender = await tx.lender.findUniqueOrThrow({ where: { id: p.lenderId }, include: { city: true } });
+  const platform = { name: settings["invoice.company_name"], address: settings["invoice.company_address"], rccm: settings["invoice.company_rccm"], ncc: settings["invoice.company_ncc"], phone: settings["site.support_phone"], email: settings["site.support_email"] };
+  const vatRegistered = settings["invoice.company_vat_registered"];
+  const { invoice } = await createInvoice(tx, {
+    kind: "SUBSCRIPTION",
+    sourceKey: `SUB:${p.subscriptionId}`,
+    reservationId: null,
+    lenderId: p.lenderId,
+    clientId: null,
+    vatRateBps: vatRegistered ? settings["invoice.vat_rate_bps"] : 0,
+    totalTtc: p.amount,
+    data: {
+      title: INVOICE_TITLE.SUBSCRIPTION,
+      issuer: "PLATFORM",
+      platform,
+      seller: { ...platform, vatRegistered },
+      buyer: { name: lender.companyName, address: [lender.address, lender.city.name].filter(Boolean).join(", "), phone: lender.phone, email: lender.email, rccm: lender.rccm, ncc: lender.taxNumber },
+      lines: [{ label: `Formule ${p.plan}`, detail: `${period(p.periodStart, p.periodEnd)} · ${p.detail}`, quantity: 1, unitPrice: p.amount, amount: p.amount }],
+      notes: [`Prix mensuel de la formule : ${formatFcfa(p.monthlyPrice)}.`, "Montant déduit des versements du loueur."],
+    },
+  });
+  return invoice;
+}
+
 // ---------------------------------------------------------------------------
 // Lecture et droits
 // ---------------------------------------------------------------------------
@@ -326,6 +356,6 @@ export async function getDamageStatementForActor(actor: Actor, itemId: string) {
 
 export function assertInvoiceKind(kind: string | undefined): InvoiceKind | undefined {
   if (!kind) return undefined;
-  if (!["RENTAL", "DAMAGE", "CREDIT_NOTE"].includes(kind)) throw new AppError("VALIDATION_ERROR", "Type de document inconnu.");
+  if (!["RENTAL", "DAMAGE", "CREDIT_NOTE", "SUBSCRIPTION"].includes(kind)) throw new AppError("VALIDATION_ERROR", "Type de document inconnu.");
   return kind as InvoiceKind;
 }

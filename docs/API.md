@@ -1,6 +1,6 @@
 # API REST LOC'CONNECT
 
-Document généré par `npm run docs:api` à partir du code (161 opérations). Ne pas modifier à la main.
+Document généré par `npm run docs:api` à partir du code (163 opérations). Ne pas modifier à la main.
 
 ## Conventions
 
@@ -183,6 +183,8 @@ Document généré par `npm run docs:api` à partir du code (161 opérations). N
 | `POST` | `/api/lenders/me/payout-details` | demande de modification des coordonnées de versement (autorisation renforcée de l'administration). |
 | `GET` | `/api/lenders/me/payouts` | versements reçus. |
 | `GET` | `/api/lenders/me/permissions` | catalogue des permissions granulaires. |
+| `GET` | `/api/lenders/me/plan` | formule en cours et simulation du coût de chaque formule sur les 30 derniers jours. |
+| `PUT` | `/api/lenders/me/plan` | changer de formule (plus chère : immédiat et facturé ; moins chère : à l'échéance). |
 | `GET` | `/api/lenders/me/roles` | rôles système et personnalisés disponibles. |
 | `POST` | `/api/lenders/me/roles` | crée un rôle personnalisé depuis le catalogue de permissions. |
 | `PATCH` | `/api/lenders/me/roles/:id` | modifie un rôle personnalisé (les rôles système sont en lecture seule). |

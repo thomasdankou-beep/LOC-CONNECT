@@ -52,6 +52,7 @@ export default async function LenderPage({ params, searchParams }: Props) {
               <Stars value={lender.ratingAvg} />
               {lender.reviewCount > 0 && <span>{lender.reviewCount} avis</span>}
               <Badge tone="success"><ShieldCheck size={14} className="mr-1" /> Loueur vérifié</Badge>
+              {lender.plan !== "FREE" && <Badge tone={lender.plan === "PREMIUM" ? "warning" : "info"}>Loueur {lender.plan === "PREMIUM" ? "Premium" : "Pro"}</Badge>}
               {lender.offersDelivery && <Badge><Truck size={14} className="mr-1" /> Livraison disponible</Badge>}
               {paymentMode === "DEPOSIT_CASH" ? <Badge tone="warning"><HandCoins size={14} className="mr-1" /> Acompte en ligne + solde en espèces</Badge> : <Badge tone="success"><ShieldCheck size={14} className="mr-1" /> Paiement 100 % protégé</Badge>}
             </p>

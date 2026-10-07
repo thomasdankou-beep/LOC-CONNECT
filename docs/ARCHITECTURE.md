@@ -50,6 +50,17 @@ Chaque loueur choisit son mode (`Lender.paymentMode`) : `ONLINE_FULL` (tout en l
 - **Annulation et modification** : seule la part en ligne est remboursée ou complétée ; le solde en espèces est recalculé ou annulé. Une fois le solde payé en espèces, l'annulation et la modification en ligne sont refusées (traitement par le support).
 - **Finance** : `PaymentAllocation.cashAmount` trace la part hors paiement ; aucune écriture de solde n'est créée pour l'argent encaissé directement par le loueur.
 
+## Formules des loueurs (Découverte, Pro, Premium)
+
+`services/plans.ts`. `Lender.plan` fixe le taux de commission : Découverte applique `commission.rate_bps` ; Pro et Premium ont un prix mensuel et un taux réduit (`plan.*`). Un taux spécifique du loueur (`commissionRateBps`, offre de lancement) s'applique s'il est plus bas. Le taux reste figé sur chaque ligne de réservation.
+
+- **Changement** : vers une formule plus chère, effet immédiat ; la part non utilisée de la période payée est déduite. Le premier mois de la première formule payante est offert (`plan.first_month_free`). Vers une formule moins chère, effet à l'échéance (`Lender.nextPlan`).
+- **Facturation** : le prix de la période est une écriture `SUBSCRIPTION_FEE` négative sur le solde, donc déduite du prochain versement, et une facture d'abonnement (`Invoice` de type `SUBSCRIPTION`, émise par LOC'CONNECT au loueur, sans réservation).
+- **Renouvellement** : `renewPlans`, appelé par la maintenance, renouvelle chaque mois au prix en vigueur, applique les changements prévus, et repasse en Découverte un loueur suspendu.
+- **Avantages** : badge Pro ou Premium, priorité dans le tri par pertinence du catalogue, produits Premium en page d'accueil après les mises en avant payées.
+- **Simulateur** : `simulatePlans` compare le coût des trois formules sur le volume de location des 30 derniers jours (page `/loueur/abonnement`, encart du tableau de bord).
+- `plan.self_service` permet de réserver le choix des formules à l'administration (`adminSetPlan` : durée et montant libres, 0 pour offrir).
+
 ## Facturation
 
 `services/invoices.ts`. LOC'CONNECT émet les documents **au nom et pour le compte de chaque loueur** (mandat de facturation). Modèle `Invoice` : numéro, type, contenu figé (`data`, JSON), totaux HT, TVA et TTC.

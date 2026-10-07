@@ -5,6 +5,7 @@ import { parseDate, daysBetween } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { availabilityForProduct, minAvailable, validateRentalPeriod } from "./availability";
 import { depositFloorFrom, depositPercentFrom, effectivePaymentMode, priceLine } from "./pricing";
+import { commissionRateFor } from "./plans";
 import type { LenderPaymentMode } from "@prisma/client";
 
 export const cartItemInput = z.object({
@@ -16,7 +17,7 @@ export const cartItemInput = z.object({
 export type CartItemInput = z.infer<typeof cartItemInput>;
 
 const itemInclude = {
-  product: { include: { photos: { orderBy: { position: "asc" as const }, take: 1 }, lender: { select: { id: true, slug: true, companyName: true, commissionRateBps: true, status: true, cityId: true, offersDelivery: true, deliveryFeeLocal: true, deliveryFeeRemote: true, paymentMode: true, cashModeAllowed: true } } } },
+  product: { include: { photos: { orderBy: { position: "asc" as const }, take: 1 }, lender: { select: { id: true, slug: true, companyName: true, commissionRateBps: true, status: true, cityId: true, offersDelivery: true, deliveryFeeLocal: true, deliveryFeeRemote: true, paymentMode: true, cashModeAllowed: true, plan: true } } } },
 };
 
 async function ensureCart(userId: string) {
@@ -126,7 +127,7 @@ export async function getCart(userId: string): Promise<CartView> {
   const lines: CartLineView[] = [];
   for (const item of cart?.items ?? []) {
     const p = item.product;
-    const rate = p.lender.commissionRateBps ?? settings["commission.rate_bps"];
+    const rate = commissionRateFor(p.lender, settings);
     const paymentMode = effectivePaymentMode(p.lender, settings);
     const priced = priceLine({ productId: p.id, lenderId: p.lenderId, quantity: item.quantity, start: item.startDate, end: item.endDate, unitPrice: p.unitPrice, depositAmount: p.depositAmount, refundPrice: p.refundPrice, commissionRateBps: rate, paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings), depositFloorPercent: depositFloorFrom(settings) });
     const days = await availabilityForProduct(db, p.id, item.startDate, item.endDate);

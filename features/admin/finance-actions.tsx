@@ -39,12 +39,13 @@ export function SubscriptionForm({ lenders }: { lenders: { id: string; name: str
       endpoint="/api/admin/subscriptions"
       label="Nouvel abonnement"
       title="Attribuer une formule"
-      description="L'abonnement actif précédent est clôturé et conservé dans l'historique."
+      description="Effet immédiat : le taux de commission de la formule s'applique aux nouvelles réservations. La formule active précédente est clôturée. À l'échéance, la formule est renouvelée au prix en vigueur."
       fields={[
         { name: "lenderId", label: "Loueur", type: "select", required: true, options: lenders.map((l) => ({ value: l.id, label: l.name })) },
-        { name: "plan", label: "Formule", type: "select", required: true, options: [{ value: "FREE", label: "Gratuite" }, { value: "PRO", label: "Pro" }, { value: "PREMIUM", label: "Premium" }] },
-        { name: "price", label: "Prix mensuel (FCFA)", type: "number", required: true, min: 0, defaultValue: 0 },
+        { name: "plan", label: "Formule", type: "select", required: true, options: [{ value: "FREE", label: "Découverte" }, { value: "PRO", label: "Pro" }, { value: "PREMIUM", label: "Premium" }] },
         { name: "months", label: "Durée (mois)", type: "number", min: 1, max: 36, defaultValue: 1 },
+        { name: "amount", label: "Montant facturé pour la durée (FCFA)", type: "number", min: 0, hint: "Laissez vide pour le prix en vigueur x durée ; 0 pour offrir la période. Déduit des versements du loueur." },
+        { name: "note", label: "Note interne", placeholder: "Ex. : partenaire de lancement" },
       ]}
       submitLabel="Attribuer"
       success="Abonnement créé"

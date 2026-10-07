@@ -13,6 +13,7 @@ import { Avatar, Stars } from "@/components/ui/misc";
 import { CaretRight, HandCoins, MapPin, ShieldCheck, Storefront, Truck, Info } from "@/components/ui/icons";
 import { getSettings } from "@/lib/settings";
 import { depositFloorFrom, depositLabel, depositPercentFrom, effectivePaymentMode } from "@/services/pricing";
+import { commissionRateFor } from "@/services/plans";
 import { BookingPanel } from "@/features/catalog/booking-panel";
 import { Gallery } from "@/features/catalog/gallery";
 import { ProductCard } from "@/features/catalog/product-card";
@@ -45,7 +46,7 @@ export default async function ProductPage({ params, searchParams }: Props) {
 
   const [actor, reviews, similar, settings] = await Promise.all([getActor(), getProductReviews(product.id), similarProducts(product.id, product.categoryId), getSettings()]);
   const paymentMode = effectivePaymentMode(product.lender, settings);
-  const ratePct = (product.lender.commissionRateBps ?? settings["commission.rate_bps"]) / 100;
+  const ratePct = commissionRateFor(product.lender, settings) / 100;
   const depositPercent = depositPercentFrom(settings);
   const depositFloor = depositFloorFrom(settings);
   const floorUnit = depositFloor ? Math.round((product.refundPrice * depositFloor) / 100) : 0;

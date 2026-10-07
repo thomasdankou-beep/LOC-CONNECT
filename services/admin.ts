@@ -371,21 +371,6 @@ export async function listSubscriptions(actor: Actor) {
   return db.subscription.findMany({ include: { lender: { select: { companyName: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
 }
 
-export const subscriptionInput = z.object({ lenderId: z.string(), plan: z.enum(["FREE", "PRO", "PREMIUM"]), price: z.number().int().min(0), months: z.number().int().min(1).max(36).default(1) });
-
-/** Une seule formule active par loueur : l'abonnement précédent est clôturé et conservé dans l'historique. */
-export async function createSubscription(actor: Actor, input: z.infer<typeof subscriptionInput>) {
-  need(actor, "ADMIN_SUBSCRIPTIONS");
-  return transaction(async (tx) => {
-    await tx.subscription.updateMany({ where: { lenderId: input.lenderId, status: "ACTIVE" }, data: { status: "CANCELLED", endsAt: new Date() } });
-    const start = new Date();
-    const sub = await tx.subscription.create({ data: { lenderId: input.lenderId, plan: input.plan, price: input.price, startsAt: start, endsAt: input.plan === "FREE" ? null : new Date(start.getTime() + input.months * 30 * 86_400_000) } });
-    await audit(tx, { userId: actor.userId, lenderId: input.lenderId, action: "subscription.create", entity: "Subscription", entityId: sub.id, newValue: input, meta: actor.meta });
-    await notifyLender(tx, input.lenderId, { type: "subscription.changed", title: `Formule ${input.plan} activée`, body: "Votre abonnement a été mis à jour.", link: "/loueur/entreprise" });
-    return sub;
-  });
-}
-
 export async function listPromotions(actor: Actor) {
   need(actor, "ADMIN_PROMOTIONS");
   return db.promotion.findMany({ include: { product: { select: { name: true, lender: { select: { companyName: true } } } } }, orderBy: { startsAt: "desc" }, take: 100 });

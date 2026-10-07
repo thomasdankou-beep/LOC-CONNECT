@@ -40,6 +40,7 @@ export async function ProductCard({ product, signedIn, isClient, favorite = fals
           <span className="truncate">
             {p.city.name} · {p.lender.companyName}
           </span>
+          {p.lender.plan !== "FREE" && <Badge tone={p.lender.plan === "PREMIUM" ? "warning" : "info"} className="relative z-10 shrink-0">{p.lender.plan === "PREMIUM" ? "Premium" : "Pro"}</Badge>}
         </p>
         <div className="mt-2 flex items-center justify-between">
           <StarsRating value={p.ratingAvg} />

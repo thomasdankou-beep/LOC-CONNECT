@@ -126,6 +126,7 @@ enum InvoiceKind {
   RENTAL
   DAMAGE
   CREDIT_NOTE
+  SUBSCRIPTION
 }
 
 enum PayoutStatus {
@@ -142,6 +143,7 @@ enum BalanceEntryKind {
   RECOVERY_OFFSET
   MANUAL_RECOVERY
   PAYOUT_ADJUSTMENT
+  SUBSCRIPTION_FEE
 }
 
 enum TransactionType {
@@ -447,6 +449,9 @@ model Lender {
   cashModeAllowed   Boolean           @default(false) // le mode espèces est ouvert par l'administration
   vatRegistered     Boolean           @default(false) // assujetti à la TVA : ses factures affichent HT, TVA et TTC
   taxNumber         String? // NCC (numéro de compte contribuable)
+  plan              SubscriptionPlan  @default(FREE) // formule en cours : fixe le taux de commission
+  nextPlan          SubscriptionPlan? // changement prévu à l'échéance (passage à une formule moins chère)
+  planRenewsAt      DateTime? // échéance de la période payée en cours
   payoutMethod      String?
   payoutAccount     String?
   createdAt         DateTime          @default(now())
@@ -1016,23 +1021,23 @@ model WebhookEvent {
 /// Facture (location, casse et perte) ou avoir. Émise par LOC'CONNECT au nom et pour le compte du loueur.
 /// Immuable : le contenu est figé dans `data` à l'émission ; une correction passe par un avoir.
 model Invoice {
-  id                String      @id @default(cuid())
-  number            String      @unique // F-2026-000123 (factures) ou AV-2026-000004 (avoirs), sans trou
+  id                String       @id @default(cuid())
+  number            String       @unique // F-2026-000123 (factures) ou AV-2026-000004 (avoirs), sans trou
   kind              InvoiceKind
-  sourceKey         String      @unique // événement à l'origine du document (idempotence)
-  reservationId     String
-  reservation       Reservation @relation(fields: [reservationId], references: [id])
+  sourceKey         String       @unique // événement à l'origine du document (idempotence)
+  reservationId     String? // vide pour une facture d'abonnement
+  reservation       Reservation? @relation(fields: [reservationId], references: [id])
   lenderId          String
-  lender            Lender      @relation(fields: [lenderId], references: [id])
-  clientId          String
+  lender            Lender       @relation(fields: [lenderId], references: [id])
+  clientId          String? // vide pour une facture d'abonnement (adressée au loueur)
   paymentId         String?
   creditedInvoiceId String? // avoir : facture corrigée
-  vatRateBps        Int         @default(0)
+  vatRateBps        Int          @default(0)
   totalHt           Int
-  vatAmount         Int         @default(0)
+  vatAmount         Int          @default(0)
   totalTtc          Int
   data              Json
-  issuedAt          DateTime    @default(now())
+  issuedAt          DateTime     @default(now())
 
   @@index([clientId, issuedAt])
   @@index([lenderId, issuedAt])
@@ -1387,7 +1392,11 @@ model Subscription {
   lender    Lender             @relation(fields: [lenderId], references: [id])
   plan      SubscriptionPlan
   status    SubscriptionStatus @default(ACTIVE)
-  price     Int
+  price     Int // prix mensuel de la formule
+  rateBps   Int? // taux de commission de la formule, figé pour la période
+  periodFee Int                @default(0) // montant réellement facturé pour la période (premier mois offert, crédit de changement)
+  autoRenew Boolean            @default(true)
+  note      String?
   startsAt  DateTime
   endsAt    DateTime?
   createdAt DateTime           @default(now())

@@ -8,7 +8,7 @@ import { formatFcfa } from "@/lib/money";
 import { CASH_STATUS, PAYMENT_STATUS } from "@/lib/labels";
 import { getInvoiceForActor } from "@/services/invoices";
 import { InvoiceDocument, type LiveStatus } from "@/features/invoices/invoice-document";
-import { reservationHref } from "@/features/invoices/helpers";
+import { invoicesHref, reservationHref } from "@/features/invoices/helpers";
 
 export const metadata: Metadata = { title: "Facture", robots: { index: false } };
 
@@ -28,7 +28,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (invoice.kind === "RENTAL") {
     const payment = invoice.paymentId ? await db.payment.findUnique({ where: { id: invoice.paymentId } }) : null;
     if (payment) live.push({ label: `Paiement en ligne ${payment.reference}`, value: PAYMENT_STATUS[payment.status].label, tone: toneOf(PAYMENT_STATUS[payment.status].tone) });
-    const cash = data.settlement && data.settlement.cashAmount > 0 ? await db.cashSettlement.findUnique({ where: { reservationId_lenderId: { reservationId: invoice.reservationId, lenderId: invoice.lenderId } } }) : null;
+    const cash = invoice.reservationId && data.settlement && data.settlement.cashAmount > 0 ? await db.cashSettlement.findUnique({ where: { reservationId_lenderId: { reservationId: invoice.reservationId!, lenderId: invoice.lenderId } } }) : null;
     if (cash) live.push({ label: "Solde en espèces", value: `${CASH_STATUS[cash.status].label}${cash.confirmedAt ? ` le ${formatDate(cash.confirmedAt)}` : ""}`, tone: toneOf(CASH_STATUS[cash.status].tone) });
   }
   if (invoice.kind === "DAMAGE") {
@@ -39,7 +39,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   for (const c of creditNotes) live.push({ label: `Avoir ${c.number} du ${formatDate(c.issuedAt)}`, value: `- ${formatFcfa(c.totalTtc)}`, tone: "muted" });
 
   const related = [
-    { href: `/factures/commande/${invoice.reservationId}`, label: "Toutes les factures de la commande" },
+    ...(invoice.reservationId ? [{ href: `/factures/commande/${invoice.reservationId}`, label: "Toutes les factures de la commande" }] : []),
     ...(credited ? [{ href: `/factures/${credited.id}`, label: `Facture ${credited.number}` }] : []),
   ];
 
@@ -53,7 +53,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       totalHt={invoice.totalHt}
       vatAmount={invoice.vatAmount}
       totalTtc={invoice.totalTtc}
-      backHref={reservationHref(actor, invoice.reservationId)}
+      backHref={invoice.reservationId ? reservationHref(actor, invoice.reservationId) : invoice.kind === "SUBSCRIPTION" && actor.accountType === "LENDER" ? "/loueur/abonnement" : invoicesHref(actor)}
       live={live}
       related={related}
     />
