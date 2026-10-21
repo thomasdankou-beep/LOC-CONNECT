@@ -42,6 +42,7 @@ export default async function ReservationPage() {
             lenders={lenders.map((l) => ({ lenderId: l.id, name: l.companyName, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote }))}
             cities={cities.map((c) => ({ id: c.id, name: c.name }))}
             defaults={{ address: user.deliveryAddress ?? "", cityId: user.cityId ?? "", phone: user.phone ?? "" }}
+            schedule={{ outDate: cart.lines.map((l) => l.startDate).sort()[0], backDate: cart.lines.map((l) => l.endDate).sort().at(-1)! }}
           />
         </Card>
         <aside className="space-y-5">

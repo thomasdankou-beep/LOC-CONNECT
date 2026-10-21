@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireClient } from "@/lib/auth/actor";
 import { PageHeader } from "@/components/ui/card";
 import { InvoiceList } from "@/features/invoices/invoice-list";
+import { QuoteList } from "@/features/invoices/quote-list";
 
 export const metadata: Metadata = { title: "Mes factures", robots: { index: false } };
 
@@ -9,7 +10,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const actor = await requireClient();
   return (
     <>
-      <PageHeader title="Mes factures" description="Factures de location, factures de casse et perte et avoirs. Ouvrez un document pour l'imprimer ou l'enregistrer en PDF." />
+      <PageHeader title="Mes factures" description="Proformas, factures de location, factures de casse et perte et avoirs. Ouvrez un document pour l'imprimer ou l'enregistrer en PDF." />
+      <QuoteList actor={actor} />
       <InvoiceList actor={actor} basePath="/mes-factures" sp={await searchParams} />
     </>
   );

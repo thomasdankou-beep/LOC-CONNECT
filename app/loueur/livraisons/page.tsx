@@ -59,6 +59,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
                   <div className="text-right text-sm">
                     <p className="font-medium text-ink">{d.scheduledDate ? formatDate(d.scheduledDate) : "Date à planifier"}</p>
                     {d.slotStart && <p className="text-muted">{d.slotStart} à {d.slotEnd}</p>}
+                    {d.returnDate && <p className="mt-1 text-muted">Récupération le {formatDate(d.returnDate)}{d.returnSlotStart ? `, ${d.returnSlotStart} à ${d.returnSlotEnd}` : ""}</p>}
                     <p className="mt-1 text-muted">Frais : {formatFcfa(d.fee)}</p>
                     {d.proofs.length > 0 && <p className="mt-1 text-muted">{d.proofs.length} preuve{d.proofs.length > 1 ? "s" : ""}</p>}
                   </div>

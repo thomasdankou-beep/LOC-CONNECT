@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { formatFcfa } from "@/lib/money";
 import { formatDate } from "@/lib/dates";
 import { PAYMENT_METHOD, RETURN_CONDITION } from "@/lib/labels";
-import type { InvoiceData, InvoiceParty } from "@/services/invoices";
+import { SCHEDULE_LABELS, slotLabel } from "@/lib/slots";
+import type { InvoiceData, InvoiceParty, InvoiceSchedule } from "@/services/invoices";
 import { PrintButton } from "./print-button";
 
 export type LiveStatus = { label: string; value: ReactNode; tone?: "ok" | "warn" | "danger" | "muted" };
@@ -41,10 +42,23 @@ function Party({ title, party, extra }: { title: string; party: InvoiceParty; ex
   );
 }
 
+/** « Livraison : 11/10/2026, 14h-16h » puis « Récupération : 12/10/2026, 08h-10h ». */
+export function ScheduleLines({ schedule, fulfillment }: { schedule: InvoiceSchedule; fulfillment: "PICKUP" | "DELIVERY" }) {
+  const labels = SCHEDULE_LABELS[fulfillment];
+  const when = (date: string, slot?: string | null) => `${formatDate(new Date(`${date}T00:00:00Z`))}${slot ? `, ${slotLabel(slot)}` : ""}`;
+  return (
+    <>
+      <p>{labels.out} : <strong>{when(schedule.outDate, schedule.outSlot)}</strong></p>
+      <p>{labels.back} : <strong>{when(schedule.backDate, schedule.backSlot)}</strong></p>
+    </>
+  );
+}
+
 /** Facture, avoir ou constat au format A4. Couleurs fixes : le document reste « papier » quel que soit le thème. */
 export function InvoiceDocument(p: Props) {
   const d = p.data;
   const hasDays = d.lines.some((l) => l.days != null);
+  const hasRefund = d.lines.some((l) => l.refundPrice != null);
   const vatPct = p.vatRateBps / 100;
   return (
     <div className="mx-auto max-w-[210mm] px-4 print:max-w-none print:px-0">
@@ -78,7 +92,7 @@ export function InvoiceDocument(p: Props) {
             {d.reservation && (
               <>
                 <p>Réservation : <span className="font-mono">{d.reservation.reference}</span></p>
-                <p>{d.reservation.fulfillment === "DELIVERY" ? "Livraison" : "Retrait chez le loueur"}</p>
+                {d.schedule ? <ScheduleLines schedule={d.schedule} fulfillment={d.reservation.fulfillment} /> : <p>{d.reservation.fulfillment === "DELIVERY" ? "Livraison" : "Retrait chez le loueur"}</p>}
               </>
             )}
           </div>
@@ -111,6 +125,7 @@ export function InvoiceDocument(p: Props) {
               <th className="py-2 pr-2 font-semibold">Désignation</th>
               <th className="px-2 py-2 text-right font-semibold">Qté</th>
               {hasDays && <th className="px-2 py-2 text-right font-semibold">Jours</th>}
+              {hasRefund && <th className="px-2 py-2 text-right font-semibold">Prix de remboursement</th>}
               <th className="px-2 py-2 text-right font-semibold">Prix unitaire</th>
               <th className="py-2 pl-2 text-right font-semibold">Montant</th>
             </tr>
@@ -121,6 +136,7 @@ export function InvoiceDocument(p: Props) {
                 <td className="py-2 pr-2"><span className="font-medium text-[#0f1b3d]">{l.label}</span>{l.detail && <span className="block text-[11px] text-[#5b6478]">{l.detail}</span>}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{l.quantity}</td>
                 {hasDays && <td className="px-2 py-2 text-right tabular-nums">{l.days ?? ""}</td>}
+                {hasRefund && <td className="px-2 py-2 text-right tabular-nums text-[#5b6478]">{l.refundPrice != null ? formatFcfa(l.refundPrice) : ""}</td>}
                 <td className="px-2 py-2 text-right tabular-nums">{l.unitPrice != null ? formatFcfa(l.unitPrice) : ""}</td>
                 <td className="py-2 pl-2 text-right tabular-nums font-medium">{formatFcfa(l.amount)}</td>
               </tr>
@@ -140,6 +156,12 @@ export function InvoiceDocument(p: Props) {
               <>
                 <div className="flex justify-between border-t border-[#0f1b3d] pt-1 text-[14px] font-bold text-[#0f1b3d]"><dt>{d.credited ? "Total de l'avoir" : "Total"}</dt><dd className="tabular-nums">{formatFcfa(p.totalTtc)}</dd></div>
                 {!d.damage && <p className="text-right text-[11px] text-[#5b6478]">TVA non applicable ({d.issuer === "PLATFORM" ? "émetteur" : "loueur"} non assujetti)</p>}
+              </>
+            )}
+            {!d.credited && d.deposit != null && d.deposit > 0 && (
+              <>
+                <div className="flex justify-between pt-1"><dt>Caution (remboursable, hors facture)</dt><dd className="tabular-nums">{formatFcfa(d.deposit)}</dd></div>
+                <div className="flex justify-between border-t border-[#0f1b3d] pt-1 text-[14px] font-bold text-[#0f1b3d]"><dt>Net à payer, caution comprise</dt><dd className="tabular-nums">{formatFcfa(p.totalTtc + d.deposit)}</dd></div>
               </>
             )}
           </dl>

@@ -3,6 +3,7 @@ import type { Hold, HoldItem } from "@prisma/client";
 import { db, transaction, type Tx } from "@/lib/db";
 import { AppError, notFound } from "@/lib/errors";
 import { addMinutes } from "@/lib/dates";
+import { slotInput } from "@/lib/slots";
 import { getSettings } from "@/lib/settings";
 import { audit, type RequestMeta } from "@/lib/audit";
 import { assertAvailable, validateRentalPeriod } from "./availability";
@@ -13,6 +14,9 @@ export const holdInput = z.object({
   deliveryCityId: z.string().optional(),
   deliveryZone: z.string().trim().max(120).optional(),
   contactPhone: z.string().trim().max(30).optional(),
+  /** Créneau de livraison (ou de retrait) le premier jour, et de récupération (ou de retour) le dernier jour. */
+  deliverySlot: slotInput.optional(),
+  returnSlot: slotInput.optional(),
   /** Libère les autres HOLD actifs du client sur les mêmes produits avant d'en créer un nouveau (parcours de paiement). */
   replaceExisting: z.boolean().default(false),
 });
@@ -49,7 +53,7 @@ export async function expireHolds(now = new Date()): Promise<number> {
   return ids.length;
 }
 
-type Line = { productId: string; quantity: number; startDate: Date; endDate: Date };
+export type Line = { productId: string; quantity: number; startDate: Date; endDate: Date };
 const sameContent = (a: Line[], b: Line[]) => {
   if (a.length !== b.length) return false;
   const key = (l: Line) => `${l.productId}|${l.quantity}|${l.startDate.getTime()}|${l.endDate.getTime()}`;
@@ -62,11 +66,13 @@ const sameContent = (a: Line[], b: Line[]) => {
  * Crée un HOLD à partir du panier du client : bloque les quantités pendant la durée configurée.
  * Garde-fous : limite de HOLD actifs (par produit et au total), durée réduite pour les clients à fort taux de HOLD non convertis,
  * contrôle de disponibilité transactionnel. Si un HOLD actif identique existe déjà, il est renvoyé (idempotence).
+ * Avec `source`, les lignes viennent d'une proforma au lieu du panier.
  */
-export async function createHold(userId: string, input: HoldInput, meta: RequestMeta = {}) {
+export async function createHold(userId: string, input: HoldInput, meta: RequestMeta = {}, source?: { lines: Line[]; quoteId: string }) {
   const settings = await getSettings();
-  const cart = await db.cart.findUnique({ where: { userId }, include: { items: true } });
-  if (!cart || cart.items.length === 0) throw new AppError("VALIDATION_ERROR", "Votre panier est vide.");
+  const cart = source ? null : await db.cart.findUnique({ where: { userId }, include: { items: true } });
+  const sourceLines: Line[] = source ? source.lines : (cart?.items ?? []).map((i) => ({ productId: i.productId, quantity: i.quantity, startDate: i.startDate, endDate: i.endDate }));
+  if (sourceLines.length === 0) throw new AppError("VALIDATION_ERROR", "Votre panier est vide.");
 
   if (input.fulfillmentType === "DELIVERY" && !input.deliveryAddress) {
     throw new AppError("VALIDATION_ERROR", "Une adresse de livraison est requise.");
@@ -80,7 +86,7 @@ export async function createHold(userId: string, input: HoldInput, meta: Request
     const now = new Date();
     await tx.hold.updateMany({ where: { userId, status: "ACTIVE", expiresAt: { lte: now } }, data: { status: "EXPIRED" } });
 
-    const lines: Line[] = cart.items.map((i) => ({ productId: i.productId, quantity: i.quantity, startDate: i.startDate, endDate: i.endDate }));
+    const lines = sourceLines;
     const productIds = [...new Set(lines.map((l) => l.productId))];
 
     const active = await tx.hold.findMany({ where: { userId, status: "ACTIVE", expiresAt: { gt: now } }, include: { items: true } });
@@ -90,6 +96,9 @@ export async function createHold(userId: string, input: HoldInput, meta: Request
       deliveryCityId: input.deliveryCityId ?? null,
       deliveryZone: input.deliveryZone ?? null,
       contactPhone: input.contactPhone ?? null,
+      deliverySlot: input.deliverySlot ?? null,
+      returnSlot: input.returnSlot ?? null,
+      quoteId: source?.quoteId ?? null,
     };
 
     const identical = active.find((h) => sameContent(h.items, lines));

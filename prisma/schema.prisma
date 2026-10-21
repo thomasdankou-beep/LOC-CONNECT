@@ -335,6 +335,7 @@ model User {
   createdMembers       LenderMember[]        @relation("MemberCreator")
   cart                 Cart?
   holds                Hold[]
+  quotes               Quote[]
   reservations         Reservation[]
   payments             Payment[]
   favorites            Favorite[]
@@ -586,6 +587,7 @@ model Product {
   favorites    Favorite[]
   cartItems    CartItem[]
   holdItems    HoldItem[]
+  quoteItems   QuoteItem[]
   items        ReservationItem[]
   reviews      Review[]
   promotions   Promotion[]
@@ -707,6 +709,9 @@ model Hold {
   deliveryCityId         String?
   deliveryZone           String?
   contactPhone           String?
+  deliverySlot           String? // créneau de remise, ex. 14:00-16:00 (livraison ou retrait)
+  returnSlot             String? // créneau de récupération ou de retour
+  quoteId                String? // proforma payée par ce blocage
   convertedReservationId String?
   releasedAt             DateTime?
   createdAt              DateTime        @default(now())
@@ -746,6 +751,10 @@ model Reservation {
   deliveryCityId     String?
   deliveryZone       String?
   contactPhone       String?
+  deliverySlot       String? // créneau de remise, ex. 14:00-16:00 (livraison ou retrait)
+  returnSlot         String? // créneau de récupération ou de retour
+  quoteId            String?
+  quote              Quote?            @relation(fields: [quoteId], references: [id])
   subtotal           Int
   deliveryFee        Int               @default(0)
   depositTotal       Int
@@ -1049,6 +1058,43 @@ model InvoiceSequence {
   last Int    @default(0)
 }
 
+/// Proforma : devis chiffré envoyé au client avant le paiement. Ce n'est pas une facture.
+/// Le client la paie depuis son lien : un blocage de stock est créé avec ses lignes, au prix de la proforma.
+model Quote {
+  id              String          @id @default(cuid())
+  number          String          @unique // PF-2026-000001, sans trou
+  clientId        String
+  client          User            @relation(fields: [clientId], references: [id])
+  validUntil      DateTime
+  fulfillmentType FulfillmentType @default(PICKUP)
+  deliveryAddress String?
+  deliveryCityId  String?
+  deliveryZone    String?
+  contactPhone    String?
+  deliverySlot    String?
+  returnSlot      String?
+  total           Int // montant à payer en ligne (location, livraison, caution, hors espèces)
+  netToPay        Int // location, livraison et caution
+  data            Json // contenu figé du document
+  createdAt       DateTime        @default(now())
+
+  items        QuoteItem[]
+  reservations Reservation[]
+
+  @@index([clientId, createdAt])
+}
+
+model QuoteItem {
+  id        String   @id @default(cuid())
+  quoteId   String
+  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+}
+
 /// Solde payé en espèces au loueur à la remise du matériel (un par loueur et par réservation).
 /// Le client donne son code de remise une fois le solde payé ; le loueur le saisit pour confirmer l'encaissement.
 model CashSettlement {
@@ -1157,27 +1203,30 @@ model ExtraCharge {
 // ---------------------------------------------------------------------------
 
 model Delivery {
-  id            String          @id @default(cuid())
-  reservationId String
-  reservation   Reservation     @relation(fields: [reservationId], references: [id])
-  lenderId      String
-  lender        Lender          @relation(fields: [lenderId], references: [id])
-  type          FulfillmentType
-  address       String?
-  cityId        String?
-  zone          String?
-  latitude      Float?
-  longitude     Float?
-  fee           Int             @default(0)
-  scheduledDate DateTime?       @db.Date
-  slotStart     String?
-  slotEnd       String?
-  status        DeliveryStatus  @default(PENDING)
-  assignedToId  String?
-  notes         String?
-  deliveredAt   DateTime?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  reservationId   String
+  reservation     Reservation     @relation(fields: [reservationId], references: [id])
+  lenderId        String
+  lender          Lender          @relation(fields: [lenderId], references: [id])
+  type            FulfillmentType
+  address         String?
+  cityId          String?
+  zone            String?
+  latitude        Float?
+  longitude       Float?
+  fee             Int             @default(0)
+  scheduledDate   DateTime?       @db.Date
+  slotStart       String?
+  slotEnd         String?
+  returnDate      DateTime?       @db.Date // récupération du matériel chez le client
+  returnSlotStart String?
+  returnSlotEnd   String?
+  status          DeliveryStatus  @default(PENDING)
+  assignedToId    String?
+  notes           String?
+  deliveredAt     DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   proofs DeliveryProof[]
 

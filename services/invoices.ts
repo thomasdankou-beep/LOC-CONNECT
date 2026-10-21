@@ -16,7 +16,10 @@ import { notifyUsers } from "./notifications";
  * Les prix du site sont TTC ; pour un loueur assujetti, la TVA est extraite du TTC.
  */
 
-export type InvoiceLine = { label: string; detail?: string; quantity: number; unitPrice: number | null; days?: number; amount: number };
+/** `refundPrice` : prix de remboursement par unité perdue ou détruite, affiché à titre d'information. */
+export type InvoiceLine = { label: string; detail?: string; quantity: number; unitPrice: number | null; days?: number; refundPrice?: number; amount: number };
+/** Dates et créneaux de remise (livraison ou retrait) et de récupération (ou de retour), au format AAAA-MM-JJ et 14:00-16:00. */
+export type InvoiceSchedule = { outDate: string; outSlot?: string | null; backDate: string; backSlot?: string | null };
 export type InvoiceParty = { name: string; address?: string | null; phone?: string | null; email?: string | null; rccm?: string | null; ncc?: string | null };
 
 export type InvoiceData = {
@@ -27,6 +30,7 @@ export type InvoiceData = {
   seller: InvoiceParty & { vatRegistered: boolean };
   buyer: InvoiceParty;
   reservation?: { reference: string; fulfillment: "PICKUP" | "DELIVERY"; createdAt: string };
+  schedule?: InvoiceSchedule;
   lines: InvoiceLine[];
   /** Facture de location : caution versée (dépôt de garantie, hors facture). */
   deposit?: number;
@@ -43,7 +47,7 @@ export type InvoiceData = {
 export const INVOICE_TITLE: Record<InvoiceKind, string> = { RENTAL: "Facture de location", DAMAGE: "Facture de casse et perte", CREDIT_NOTE: "Avoir", SUBSCRIPTION: "Facture d'abonnement" };
 
 /** Séquence sans trou par préfixe et par année : le compteur est incrémenté dans la transaction qui émet le document. */
-async function nextNumber(tx: Tx, prefix: "F" | "AV", now = new Date()): Promise<string> {
+export async function nextNumber(tx: Tx, prefix: "F" | "AV" | "PF", now = new Date()): Promise<string> {
   const key = `${prefix}-${now.getUTCFullYear()}`;
   const rows = await tx.$queryRaw<{ last: number }[]>`INSERT INTO "InvoiceSequence" ("key", "last") VALUES (${key}, 1) ON CONFLICT ("key") DO UPDATE SET "last" = "InvoiceSequence"."last" + 1 RETURNING "last"`;
   return `${key}-${String(rows[0].last).padStart(6, "0")}`;
@@ -100,6 +104,26 @@ async function createInvoice(
 
 const period = (start: Date, end: Date) => `du ${formatDate(start)} au ${formatDate(end)}`;
 
+/**
+ * Remise le premier jour de location, récupération le dernier (fin de période). Les créneaux planifiés par le loueur
+ * sur sa livraison priment sur ceux choisis par le client à la commande.
+ */
+export function scheduleOf(
+  lines: { startDate: Date; endDate: Date }[],
+  deliverySlot: string | null,
+  returnSlot: string | null,
+  delivery?: { scheduledDate: Date | null; slotStart: string | null; slotEnd: string | null; returnDate: Date | null; returnSlotStart: string | null; returnSlotEnd: string | null } | null,
+): InvoiceSchedule {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const join = (a: string | null, b: string | null) => (a && b ? `${a}-${b}` : null);
+  return {
+    outDate: iso(delivery?.scheduledDate ?? new Date(Math.min(...lines.map((l) => l.startDate.getTime())))),
+    outSlot: join(delivery?.slotStart ?? null, delivery?.slotEnd ?? null) ?? deliverySlot,
+    backDate: iso(delivery?.returnDate ?? new Date(Math.max(...lines.map((l) => l.endDate.getTime())))),
+    backSlot: join(delivery?.returnSlotStart ?? null, delivery?.returnSlotEnd ?? null) ?? returnSlot,
+  };
+}
+
 /** Factures de location émises à la confirmation du paiement initial : une par loueur. */
 export async function issueRentalInvoices(tx: Tx, reservationId: string, paymentId: string) {
   const reservation = await tx.reservation.findUniqueOrThrow({ where: { id: reservationId }, include: { items: { orderBy: { createdAt: "asc" } }, deliveries: true, cashSettlements: true } });
@@ -109,7 +133,7 @@ export async function issueRentalInvoices(tx: Tx, reservationId: string, payment
     const mine = reservation.items.filter((i) => i.lenderId === lenderId);
     const { settings, lender, base } = await parties(tx, reservationId, lenderId);
     const delivery = reservation.deliveries.find((d) => d.lenderId === lenderId);
-    const lines: InvoiceLine[] = mine.map((i) => ({ label: i.productName, detail: period(i.startDate, i.endDate), quantity: i.quantity, days: i.days, unitPrice: i.unitPrice, amount: i.subtotal }));
+    const lines: InvoiceLine[] = mine.map((i) => ({ label: i.productName, detail: period(i.startDate, i.endDate), quantity: i.quantity, days: i.days, unitPrice: i.unitPrice, refundPrice: i.refundPrice, amount: i.subtotal }));
     if (delivery && delivery.fee > 0) lines.push({ label: "Livraison", detail: delivery.address ?? undefined, quantity: 1, unitPrice: delivery.fee, amount: delivery.fee });
     const total = sum(lines.map((l) => l.amount));
     const cashAmount = sum(mine.map((i) => i.cashDue)) + (reservation.cashSettlements.find((c) => c.lenderId === lenderId)?.deliveryDue ?? 0);
@@ -127,6 +151,7 @@ export async function issueRentalInvoices(tx: Tx, reservationId: string, payment
       data: {
         ...base,
         title: INVOICE_TITLE.RENTAL,
+        schedule: scheduleOf(mine, reservation.deliverySlot, reservation.returnSlot, delivery),
         lines,
         deposit: sum(mine.map((i) => i.depositAmount)),
         settlement: { paymentMode, onlineAmount: total - cashAmount, cashAmount, method: payment.method, paymentReference: payment.reference, paidAt: (payment.paidAt ?? new Date()).toISOString() },
