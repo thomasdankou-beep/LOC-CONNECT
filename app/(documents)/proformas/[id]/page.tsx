@@ -35,10 +35,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       number={quote.number}
       createdAt={quote.createdAt}
       validUntil={quote.validUntil}
+      acceptedAt={quote.acceptedAt}
       data={data}
       backHref={actor.accountType === "CLIENT" ? "/mes-factures" : "/admin/reservations"}
       banner={banner}
-      action={actor.accountType === "CLIENT" && status === "OPEN" ? <PayQuoteButton quoteId={quote.id} label={`Payer ${formatFcfa(quote.total)}`} /> : undefined}
+      action={actor.accountType === "CLIENT" && status === "OPEN" ? <PayQuoteButton quoteId={quote.id} label={`Payer ${formatFcfa(quote.total)}`} hasTerms={data.groups.some((g) => g.terms)} /> : undefined}
     />
   );
 }

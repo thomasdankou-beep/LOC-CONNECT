@@ -4,7 +4,7 @@ import { pageActor } from "@/lib/auth/page";
 import { AppError } from "@/lib/errors";
 import { formatDateTime } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
-import { getDamageStatementForActor, type InvoiceData, type InvoiceLine } from "@/services/invoices";
+import { getDamageStatementForActor, lenderParty, type InvoiceData, type InvoiceLine } from "@/services/invoices";
 import { InvoiceDocument } from "@/features/invoices/invoice-document";
 import { reservationHref } from "@/features/invoices/helpers";
 
@@ -32,7 +32,7 @@ export default async function Page({ params }: { params: Promise<{ itemId: strin
   const data: InvoiceData = {
     title: "Constat de casse et perte",
     platform: { name: settings["invoice.company_name"], address: settings["invoice.company_address"], rccm: settings["invoice.company_rccm"], ncc: settings["invoice.company_ncc"], phone: settings["site.support_phone"], email: settings["site.support_email"] },
-    seller: { name: item.lender.companyName, address: [item.lender.address, item.lender.city.name].filter(Boolean).join(", "), phone: item.lender.phone, email: item.lender.email, rccm: item.lender.rccm, ncc: item.lender.taxNumber, vatRegistered: item.lender.vatRegistered },
+    seller: lenderParty(item.lender),
     buyer: { name: `${item.reservation.client.firstName} ${item.reservation.client.lastName}`, phone: item.reservation.contactPhone ?? item.reservation.client.phone, email: item.reservation.client.email },
     reservation: { reference: item.reservation.reference, fulfillment: item.reservation.fulfillmentType, createdAt: item.reservation.createdAt.toISOString() },
     lines,

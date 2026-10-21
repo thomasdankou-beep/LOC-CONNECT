@@ -17,6 +17,10 @@ export const holdInput = z.object({
   /** Créneau de livraison (ou de retrait) le premier jour, et de récupération (ou de retour) le dernier jour. */
   deliverySlot: slotInput.optional(),
   returnSlot: slotInput.optional(),
+  /** Événement ou société du client (ex. « STORY FOAM »), imprimé sur la proforma et les factures. */
+  eventName: z.string().trim().max(120).optional(),
+  /** « Lu et approuvé » : le client accepte la commande et les conditions générales des loueurs. */
+  acceptTerms: z.boolean().optional(),
   /** Libère les autres HOLD actifs du client sur les mêmes produits avant d'en créer un nouveau (parcours de paiement). */
   replaceExisting: z.boolean().default(false),
 });
@@ -98,6 +102,8 @@ export async function createHold(userId: string, input: HoldInput, meta: Request
       contactPhone: input.contactPhone ?? null,
       deliverySlot: input.deliverySlot ?? null,
       returnSlot: input.returnSlot ?? null,
+      eventName: input.eventName || null,
+      termsAcceptedAt: input.acceptTerms ? now : null,
       quoteId: source?.quoteId ?? null,
     };
 

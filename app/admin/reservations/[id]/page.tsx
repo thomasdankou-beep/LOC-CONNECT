@@ -46,7 +46,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <h1 className="font-mono text-2xl font-semibold text-ink sm:text-3xl">{r.reference}</h1>
             <StatusBadge entry={RESERVATION_STATUS[r.status]} />
           </div>
-          <p className="mt-1 text-sm text-muted">{r.client.firstName} {r.client.lastName} · {r.client.email}{r.client.phone ? ` · ${r.client.phone}` : ""} · créée le {formatDate(r.createdAt)} · {FULFILLMENT[r.fulfillmentType]}{slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot) ? ` (${slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot)})` : ""}</p>
+          <p className="mt-1 text-sm text-muted">{r.client.firstName} {r.client.lastName} · {r.client.email}{r.client.phone ? ` · ${r.client.phone}` : ""} · créée le {formatDate(r.createdAt)} · {r.eventName ? `${r.eventName} · ` : ""}{FULFILLMENT[r.fulfillmentType]}{slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot) ? ` (${slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot)})` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <StatusCorrection reservationId={r.id} items={r.items.map((i) => ({ id: i.id, name: `${i.quantity} x ${i.productName}` }))} />

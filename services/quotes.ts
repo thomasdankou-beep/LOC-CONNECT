@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 import type { LenderPaymentMode, Prisma, Quote, ReservationStatus } from "@prisma/client";
 import { db, transaction } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
@@ -11,7 +11,7 @@ import type { Slot } from "@/lib/slots";
 import { validateRentalPeriod } from "./availability";
 import { getCart } from "./cart";
 import { createHold, holdInput } from "./holds";
-import { nextNumber, scheduleOf, type InvoiceLine, type InvoiceParty, type InvoiceSchedule } from "./invoices";
+import { lenderParty, nextNumber, scheduleOf, type InvoiceLine, type InvoiceParty, type InvoiceSchedule } from "./invoices";
 import { priceOrder } from "./reservations";
 
 /**
@@ -20,10 +20,15 @@ import { priceOrder } from "./reservations";
  * sinon le paiement est refusé (PRICE_CHANGED). La disponibilité du matériel n'est garantie qu'au paiement.
  */
 
-export const quoteInput = holdInput.omit({ replaceExisting: true });
+export const quoteInput = holdInput.omit({ replaceExisting: true, acceptTerms: true });
+
+/** Le client coche « Lu et approuvé » pour payer : il accepte la proforma et les conditions générales des loueurs. */
+export const payQuoteInput = z.object({ accept: z.literal(true, { message: "Cochez « Lu et approuvé » pour accepter la proforma et les conditions générales." }) });
 
 export type QuoteGroup = {
   seller: InvoiceParty;
+  /** Conditions générales du loueur au moment de la proforma. */
+  terms?: string | null;
   lines: InvoiceLine[];
   rental: number;
   delivery: number;
@@ -97,7 +102,8 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
     });
     if (b.delivery > 0) lines.push({ label: "Transport (livraison et récupération)", detail: address ?? undefined, quantity: 1, unitPrice: b.delivery, amount: b.delivery });
     return {
-      seller: { name: lender.companyName, address: [lender.address, lender.city.name].filter(Boolean).join(", "), phone: lender.phone, email: lender.email, rccm: lender.rccm, ncc: lender.taxNumber },
+      seller: lenderParty(lender),
+      terms: lender.terms,
       lines,
       rental: b.rental,
       delivery: b.delivery,
@@ -117,7 +123,7 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
   ];
   const data: QuoteData = {
     platform: { name: settings["invoice.company_name"], address: settings["invoice.company_address"], rccm: settings["invoice.company_rccm"], ncc: settings["invoice.company_ncc"], phone: settings["site.support_phone"], email: settings["site.support_email"] },
-    buyer: { name: `${user.firstName} ${user.lastName}`, phone: input.contactPhone || user.phone, email: user.email, address },
+    buyer: { name: `${user.firstName} ${user.lastName}`, phone: input.contactPhone || user.phone, email: user.email, address, event: input.eventName || null },
     fulfillment: input.fulfillmentType,
     schedule: scheduleOf(items, input.deliverySlot ?? null, input.returnSlot ?? null),
     groups,
@@ -138,6 +144,7 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
         contactPhone: input.contactPhone ?? null,
         deliverySlot: input.deliverySlot ?? null,
         returnSlot: input.returnSlot ?? null,
+        eventName: input.eventName || null,
         total: totals.total,
         netToPay,
         data: data as unknown as Prisma.InputJsonValue,
@@ -171,7 +178,8 @@ export async function listQuotes(actor: Actor, opts: { take?: number } = {}) {
  * Paiement d'une proforma : bloque le stock avec ses lignes, sans toucher au panier. Le montant est vérifié ici puis
  * à la création de la réservation ; s'il a changé, le client doit demander une nouvelle proforma.
  */
-export async function payQuote(userId: string, quoteId: string, meta: RequestMeta = {}) {
+export async function payQuote(userId: string, quoteId: string, input: z.infer<typeof payQuoteInput>, meta: RequestMeta = {}) {
+  if (input.accept !== true) throw new AppError("VALIDATION_ERROR", "Cochez « Lu et approuvé » pour accepter la proforma et les conditions générales.");
   const quote = await db.quote.findFirst({ where: { id: quoteId, clientId: userId }, include: { items: { include: { product: { include: { lender: true } } } }, reservations: { select: { status: true } } } });
   if (!quote) throw notFound("Proforma");
   const status = quoteStatus(quote, quote.reservations);
@@ -183,7 +191,7 @@ export async function payQuote(userId: string, quoteId: string, meta: RequestMet
   if (totals.total !== quote.total || sum([totals.subtotal, totals.deliveryFee, totals.depositTotal]) !== quote.netToPay) {
     throw new AppError("PRICE_CHANGED", `Les prix ont changé depuis la proforma ${quote.number}. Demandez une nouvelle proforma depuis votre panier.`);
   }
-  return createHold(
+  const hold = await createHold(
     userId,
     {
       fulfillmentType: quote.fulfillmentType,
@@ -193,9 +201,14 @@ export async function payQuote(userId: string, quoteId: string, meta: RequestMet
       contactPhone: quote.contactPhone ?? undefined,
       deliverySlot: (quote.deliverySlot ?? undefined) as Slot | undefined,
       returnSlot: (quote.returnSlot ?? undefined) as Slot | undefined,
+      eventName: quote.eventName ?? undefined,
+      acceptTerms: true,
       replaceExisting: true,
     },
     meta,
     { lines: quote.items.map((i) => ({ productId: i.productId, quantity: i.quantity, startDate: i.startDate, endDate: i.endDate })), quoteId: quote.id },
   );
+  await db.quote.update({ where: { id: quote.id }, data: { acceptedAt: hold.termsAcceptedAt ?? new Date() } });
+  await audit(db, { userId, action: "quote.accept", entity: "Quote", entityId: quote.id, newValue: { holdId: hold.id }, meta });
+  return hold;
 }

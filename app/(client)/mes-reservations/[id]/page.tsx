@@ -60,7 +60,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
             <StatusBadge entry={RESERVATION_STATUS[r.status]} />
             {initialPayment?.provider === "simulated" && <Badge tone="warning">Paiement simulé</Badge>}
           </div>
-          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {FULFILLMENT[r.fulfillmentType]}{slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot) ? ` (${slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot)})` : ""}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
+          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {r.eventName ? `${r.eventName} · ` : ""}{FULFILLMENT[r.fulfillmentType]}{slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot) ? ` (${slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot)})` : ""}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {hold && <LinkButton href={`/paiement?hold=${hold.id}`}>Finaliser le paiement</LinkButton>}

@@ -443,6 +443,7 @@ model Lender {
   ratingAvg         Float             @default(0)
   reviewCount       Int               @default(0)
   offersDelivery    Boolean           @default(true)
+  deliveryRequired  Boolean           @default(false) // livraison imposée par le loueur : pas de retrait chez lui
   deliveryFeeLocal  Int               @default(3000)
   deliveryFeeRemote Int               @default(8000)
   commissionRateBps Int?
@@ -450,6 +451,9 @@ model Lender {
   cashModeAllowed   Boolean           @default(false) // le mode espèces est ouvert par l'administration
   vatRegistered     Boolean           @default(false) // assujetti à la TVA : ses factures affichent HT, TVA et TTC
   taxNumber         String? // NCC (numéro de compte contribuable)
+  shareCapital      Int? // capital social en FCFA, imprimé sur les documents
+  postalAddress     String? // boîte postale, ex. 18 BP 1470 Abidjan 18
+  terms             String? // conditions générales de location, imprimées sur la proforma et la facture
   plan              SubscriptionPlan  @default(FREE) // formule en cours : fixe le taux de commission
   nextPlan          SubscriptionPlan? // changement prévu à l'échéance (passage à une formule moins chère)
   planRenewsAt      DateTime? // échéance de la période payée en cours
@@ -711,6 +715,8 @@ model Hold {
   contactPhone           String?
   deliverySlot           String? // créneau de remise, ex. 14:00-16:00 (livraison ou retrait)
   returnSlot             String? // créneau de récupération ou de retour
+  eventName              String? // événement ou société du client, imprimé sur les documents
+  termsAcceptedAt        DateTime? // « Lu et approuvé » coché par le client
   quoteId                String? // proforma payée par ce blocage
   convertedReservationId String?
   releasedAt             DateTime?
@@ -753,6 +759,8 @@ model Reservation {
   contactPhone       String?
   deliverySlot       String? // créneau de remise, ex. 14:00-16:00 (livraison ou retrait)
   returnSlot         String? // créneau de récupération ou de retour
+  eventName          String?
+  termsAcceptedAt    DateTime? // « Lu et approuvé » coché par le client avant le paiement
   quoteId            String?
   quote              Quote?            @relation(fields: [quoteId], references: [id])
   subtotal           Int
@@ -1073,6 +1081,8 @@ model Quote {
   contactPhone    String?
   deliverySlot    String?
   returnSlot      String?
+  eventName       String?
+  acceptedAt      DateTime? // « Lu et approuvé » coché au paiement
   total           Int // montant à payer en ligne (location, livraison, caution, hors espèces)
   netToPay        Int // location, livraison et caution
   data            Json // contenu figé du document

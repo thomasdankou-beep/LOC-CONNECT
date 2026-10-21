@@ -34,6 +34,10 @@ export function priceOrder(settings: Settings, items: OrderLine[], fulfillment: 
     const l = i.product.lender;
     terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, commissionRateBps: commissionRateFor(l, settings), paymentMode: effectivePaymentMode(l, settings) });
   }
+  if (fulfillment !== "DELIVERY") {
+    const required = items.find((i) => i.product.lender.deliveryRequired);
+    if (required) throw new AppError("VALIDATION_ERROR", `${required.product.lender.companyName} livre obligatoirement son matériel. Choisissez la livraison pour cette commande.`);
+  }
   if (fulfillment === "DELIVERY") {
     for (const t of terms.values()) {
       if (!t.offersDelivery) {
@@ -60,8 +64,9 @@ export async function createReservationFromHold(userId: string, holdId: string, 
 
     const existing = await tx.reservation.findFirst({ where: { holdId }, include: { items: true } });
     if (existing) {
-      if (existing.status === "HOLD" && (existing.quoteId !== hold.quoteId || existing.deliverySlot !== hold.deliverySlot || existing.returnSlot !== hold.returnSlot)) {
-        return tx.reservation.update({ where: { id: existing.id }, data: { quoteId: hold.quoteId, deliverySlot: hold.deliverySlot, returnSlot: hold.returnSlot }, include: { items: true } });
+      if (existing.status === "HOLD") {
+        // Le HOLD identique a pu être réutilisé avec d'autres détails (proforma, créneaux, acceptation) : la réservation les suit.
+        return tx.reservation.update({ where: { id: existing.id }, data: { quoteId: hold.quoteId, deliverySlot: hold.deliverySlot, returnSlot: hold.returnSlot, eventName: hold.eventName, termsAcceptedAt: hold.termsAcceptedAt }, include: { items: true } });
       }
       if (["HOLD", "PENDING_PAYMENT", "PAID", "CONFIRMED"].includes(existing.status)) return existing;
       throw new AppError("CONFLICT", "Une réservation existe déjà pour ce blocage de stock.");
@@ -101,6 +106,8 @@ export async function createReservationFromHold(userId: string, holdId: string, 
         contactPhone: hold.contactPhone,
         deliverySlot: hold.deliverySlot,
         returnSlot: hold.returnSlot,
+        eventName: hold.eventName,
+        termsAcceptedAt: hold.termsAcceptedAt,
         quoteId: hold.quoteId,
         subtotal: totals.subtotal,
         deliveryFee: totals.deliveryFee,

@@ -20,7 +20,25 @@ import { notifyUsers } from "./notifications";
 export type InvoiceLine = { label: string; detail?: string; quantity: number; unitPrice: number | null; days?: number; refundPrice?: number; amount: number };
 /** Dates et créneaux de remise (livraison ou retrait) et de récupération (ou de retour), au format AAAA-MM-JJ et 14:00-16:00. */
 export type InvoiceSchedule = { outDate: string; outSlot?: string | null; backDate: string; backSlot?: string | null };
-export type InvoiceParty = { name: string; address?: string | null; phone?: string | null; email?: string | null; rccm?: string | null; ncc?: string | null };
+export type InvoiceParty = {
+  name: string;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  rccm?: string | null;
+  ncc?: string | null;
+  /** Loueur : en-tête et pied de page de ses documents. */
+  logoUrl?: string | null;
+  postalAddress?: string | null;
+  shareCapital?: number | null;
+  /** Client : événement ou société pour lequel il loue. */
+  event?: string | null;
+};
+
+/** Identité du loueur telle qu'imprimée sur ses documents (figée dans chaque document). */
+export function lenderParty(l: { companyName: string; address: string | null; city: { name: string }; phone: string | null; email: string | null; rccm: string | null; taxNumber: string | null; vatRegistered: boolean; logoUrl: string | null; postalAddress: string | null; shareCapital: number | null }) {
+  return { name: l.companyName, address: [l.address, l.city.name].filter(Boolean).join(", "), phone: l.phone, email: l.email, rccm: l.rccm, ncc: l.taxNumber, vatRegistered: l.vatRegistered, logoUrl: l.logoUrl, postalAddress: l.postalAddress, shareCapital: l.shareCapital };
+}
 
 export type InvoiceData = {
   title: string;
@@ -41,6 +59,9 @@ export type InvoiceData = {
   /** Avoir : facture corrigée et motif. */
   credited?: { number: string; issuedAt: string } | null;
   reason?: string;
+  /** Facture de location : conditions générales du loueur et acceptation en ligne par le client (« Lu et approuvé »). */
+  terms?: string | null;
+  acceptedAt?: string | null;
   notes: string[];
 };
 
@@ -65,8 +86,8 @@ async function parties(tx: Tx, reservationId: string, lenderId: string) {
   const reservation = await tx.reservation.findUniqueOrThrow({ where: { id: reservationId }, include: { client: true } });
   const lender = await tx.lender.findUniqueOrThrow({ where: { id: lenderId }, include: { city: true } });
   const platform: InvoiceParty = { name: settings["invoice.company_name"], address: settings["invoice.company_address"], rccm: settings["invoice.company_rccm"], ncc: settings["invoice.company_ncc"], phone: settings["site.support_phone"], email: settings["site.support_email"] };
-  const seller = { name: lender.companyName, address: [lender.address, lender.city.name].filter(Boolean).join(", "), phone: lender.phone, email: lender.email, rccm: lender.rccm, ncc: lender.taxNumber, vatRegistered: lender.vatRegistered };
-  const buyer: InvoiceParty = { name: `${reservation.client.firstName} ${reservation.client.lastName}`, phone: reservation.contactPhone ?? reservation.client.phone, email: reservation.client.email, address: reservation.deliveryAddress ?? reservation.client.deliveryAddress };
+  const seller = lenderParty(lender);
+  const buyer: InvoiceParty = { name: `${reservation.client.firstName} ${reservation.client.lastName}`, phone: reservation.contactPhone ?? reservation.client.phone, email: reservation.client.email, address: reservation.deliveryAddress ?? reservation.client.deliveryAddress, event: reservation.eventName };
   return {
     settings,
     reservation,
@@ -152,6 +173,8 @@ export async function issueRentalInvoices(tx: Tx, reservationId: string, payment
         ...base,
         title: INVOICE_TITLE.RENTAL,
         schedule: scheduleOf(mine, reservation.deliverySlot, reservation.returnSlot, delivery),
+        terms: lender.terms,
+        acceptedAt: reservation.termsAcceptedAt?.toISOString() ?? null,
         lines,
         deposit: sum(mine.map((i) => i.depositAmount)),
         settlement: { paymentMode, onlineAmount: total - cashAmount, cashAmount, method: payment.method, paymentReference: payment.reference, paidAt: (payment.paidAt ?? new Date()).toISOString() },

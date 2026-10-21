@@ -30,7 +30,7 @@ export default async function ReservationPage() {
   if (cart.issues > 0) redirect("/panier");
 
   const lenderIds = cart.groups.map((g) => g.lenderId);
-  const lenders = await db.lender.findMany({ where: { id: { in: lenderIds } }, select: { id: true, companyName: true, cityId: true, offersDelivery: true, deliveryFeeLocal: true, deliveryFeeRemote: true } });
+  const lenders = await db.lender.findMany({ where: { id: { in: lenderIds } }, select: { id: true, companyName: true, cityId: true, offersDelivery: true, deliveryFeeLocal: true, deliveryFeeRemote: true, terms: true, deliveryRequired: true } });
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-4 pt-8 sm:px-6">
@@ -39,7 +39,7 @@ export default async function ReservationPage() {
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_24rem]">
         <Card className="p-6 sm:p-8">
           <FulfillmentForm
-            lenders={lenders.map((l) => ({ lenderId: l.id, name: l.companyName, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote }))}
+            lenders={lenders.map((l) => ({ lenderId: l.id, name: l.companyName, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, terms: l.terms, deliveryRequired: l.deliveryRequired }))}
             cities={cities.map((c) => ({ id: c.id, name: c.name }))}
             defaults={{ address: user.deliveryAddress ?? "", cityId: user.cityId ?? "", phone: user.phone ?? "" }}
             schedule={{ outDate: cart.lines.map((l) => l.startDate).sort()[0], backDate: cart.lines.map((l) => l.endDate).sort().at(-1)! }}
