@@ -39,7 +39,7 @@ export default async function Page({ params }: { params: Promise<{ reservationId
         <PrintButton />
       </div>
       <article className="bg-white p-[12mm] text-[12px] leading-relaxed text-[#1f2a44] shadow-[0_8px_32px_rgba(15,27,61,0.12)] print:p-0 print:shadow-none">
-        <header className="flex flex-wrap items-start justify-between gap-6 border-b-2 border-[#0f1b3d] pb-5">
+        <div className="flex flex-wrap items-start justify-between gap-6 border-b-2 border-[#0f1b3d] pb-5">
           <div>
             <div className="flex items-center gap-2">
               <span className="flex size-9 items-center justify-center rounded-[8px] bg-[#1f4fd6] text-[13px] font-bold text-white">LC</span>
@@ -54,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ reservationId
             <p>Client : {reservation.client.firstName} {reservation.client.lastName}</p>
             <p>Commande du {formatDate(reservation.createdAt)}</p>
           </div>
-        </header>
+        </div>
         <p className="mt-4 text-[11px] text-[#5b6478]">
           {scope.kind === "lender" ? "Documents de votre entreprise pour cette commande." : "Chaque loueur facture sa partie de la commande : une facture par loueur, des avoirs en cas d'annulation ou de remboursement, une facture de casse et perte après un constat avec dommages."}
         </p>

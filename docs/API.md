@@ -1,6 +1,6 @@
 # API REST LOC'CONNECT
 
-Document généré par `npm run docs:api` à partir du code (163 opérations). Ne pas modifier à la main.
+Document généré par `npm run docs:api` à partir du code (169 opérations). Ne pas modifier à la main.
 
 ## Conventions
 
@@ -179,6 +179,8 @@ Document généré par `npm run docs:api` à partir du code (163 opérations). N
 | `GET` | `/api/lenders/me/audit` | audit de l'entreprise, filtrable par utilisateur, action, entité et période. |
 | `GET` | `/api/lenders/me/balance` | soldes et écritures (gelés, bloqués, disponibles, déductions). |
 | `GET` | `/api/lenders/me/clients` | clients ayant loué chez ce loueur. |
+| `POST` | `/api/lenders/me/logo` | téléverse le logo de l'entreprise (JPEG, PNG ou WebP, 6 Mo max), affiché sur la page publique et en en-tête des documents. |
+| `DELETE` | `/api/lenders/me/logo` | retire le logo des prochains documents. |
 | `PUT` | `/api/lenders/me/payment-mode` | tout en ligne, ou acompte en ligne et solde en espèces (si ouvert par l'administration). |
 | `POST` | `/api/lenders/me/payout-details` | demande de modification des coordonnées de versement (autorisation renforcée de l'administration). |
 | `GET` | `/api/lenders/me/payouts` | versements reçus. |
@@ -237,6 +239,15 @@ Document généré par `npm run docs:api` à partir du code (163 opérations). N
 | `DELETE` | `/api/products/:id/photos` | supprime une photo. |
 | `POST` | `/api/products/:id/status` | publier (soumettre à modération), désactiver ou réactiver. |
 | `POST` | `/api/products/:id/stock` | ajustement de stock journalisé (jamais sous le stock déjà engagé). |
+
+## /api/quotes
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/quotes` | proformas du client (toutes pour l'administration). |
+| `POST` | `/api/quotes` | proforma du panier (mode de remise, adresse, créneaux), valable `quote.validity_days` jours. Ne bloque pas le stock. |
+| `GET` | `/api/quotes/:id` | contenu figé de la proforma et son état (à payer, payée, expirée). |
+| `POST` | `/api/quotes/:id/pay` | avec { accept: true } (« Lu et approuvé »), bloque le stock avec les lignes de la proforma, au montant annoncé (PRICE_CHANGED sinon), puis paiement comme un panier. |
 
 ## /api/refunds
 

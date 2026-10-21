@@ -5,21 +5,24 @@ import { useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api-client";
 import { formatFcfa } from "@/lib/money";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/field";
+import { Checkbox, Input, Select } from "@/components/ui/field";
 import { Notice } from "@/components/ui/states";
 import { Storefront, Truck } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
+import { SCHEDULE_LABELS, SLOTS, slotLabel } from "@/lib/slots";
 
-type LenderTerms = { lenderId: string; name: string; cityId: string; offersDelivery: boolean; feeLocal: number; feeRemote: number };
+type LenderTerms = { lenderId: string; name: string; cityId: string; offersDelivery: boolean; feeLocal: number; feeRemote: number; terms: string | null; deliveryRequired: boolean };
 type City = { id: string; name: string };
 
-export function FulfillmentForm({ lenders, cities, defaults }: { lenders: LenderTerms[]; cities: City[]; defaults: { address: string; cityId: string; phone: string } }) {
+export function FulfillmentForm({ lenders, cities, defaults, schedule }: { lenders: LenderTerms[]; cities: City[]; defaults: { address: string; cityId: string; phone: string }; schedule: { outDate: string; backDate: string } }) {
   const router = useRouter();
   const canDeliver = lenders.every((l) => l.offersDelivery);
-  const [mode, setMode] = useState<"PICKUP" | "DELIVERY">("PICKUP");
+  const mustDeliver = lenders.filter((l) => l.deliveryRequired);
+  const [mode, setMode] = useState<"PICKUP" | "DELIVERY">(mustDeliver.length > 0 && canDeliver ? "DELIVERY" : "PICKUP");
   const [cityId, setCityId] = useState(defaults.cityId);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<"pay" | "quote" | null>(null);
+  const [accepted, setAccepted] = useState(false);
 
   const estimates = useMemo(
     () => lenders.map((l) => ({ ...l, fee: mode === "DELIVERY" && l.offersDelivery ? (cityId && cityId === l.cityId ? l.feeLocal : l.feeRemote) : 0 })),
@@ -29,29 +32,44 @@ export function FulfillmentForm({ lenders, cities, defaults }: { lenders: Lender
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Le bouton « Obtenir une proforma » envoie le même formulaire : la proforma ne bloque pas le stock.
+    const intent = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "quote" ? "quote" : "pay";
     const fd = new FormData(e.currentTarget);
-    setPending(true);
+    if (intent === "pay" && !accepted) {
+      setError("Cochez « Lu et approuvé » pour passer au paiement.");
+      return;
+    }
+    setPending(intent);
     setError(null);
+    const body = {
+      fulfillmentType: mode,
+      deliveryAddress: mode === "DELIVERY" ? String(fd.get("address") ?? "") : undefined,
+      deliveryCityId: mode === "DELIVERY" ? cityId || undefined : undefined,
+      deliveryZone: mode === "DELIVERY" ? String(fd.get("zone") ?? "") || undefined : undefined,
+      contactPhone: String(fd.get("phone") ?? "") || undefined,
+      deliverySlot: String(fd.get("deliverySlot") ?? "") || undefined,
+      returnSlot: String(fd.get("returnSlot") ?? "") || undefined,
+      eventName: String(fd.get("eventName") ?? "").trim() || undefined,
+    };
     try {
-      const hold = await api<{ id: string }>("/api/holds", {
-        body: {
-          fulfillmentType: mode,
-          deliveryAddress: mode === "DELIVERY" ? String(fd.get("address") ?? "") : undefined,
-          deliveryCityId: mode === "DELIVERY" ? cityId || undefined : undefined,
-          deliveryZone: mode === "DELIVERY" ? String(fd.get("zone") ?? "") || undefined : undefined,
-          contactPhone: String(fd.get("phone") ?? "") || undefined,
-          replaceExisting: true,
-        },
-      });
+      if (intent === "quote") {
+        const quote = await api<{ id: string }>("/api/quotes", { body });
+        router.push(`/proformas/${quote.id}`);
+        return;
+      }
+      const hold = await api<{ id: string }>("/api/holds", { body: { ...body, acceptTerms: true, replaceExisting: true } });
       router.push(`/paiement?hold=${hold.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Impossible de bloquer le stock pour le moment.");
-      setPending(false);
+      setError(err instanceof ApiError ? err.message : intent === "quote" ? "Impossible de préparer la proforma pour le moment." : "Impossible de bloquer le stock pour le moment.");
+      setPending(null);
     }
   }
 
+  const labels = SCHEDULE_LABELS[mode];
+  const day = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+
   const options = [
-    { value: "PICKUP" as const, icon: <Storefront size={22} />, title: "Retrait chez le loueur", desc: "Gratuit. Vous récupérez et rapportez le matériel.", disabled: false },
+    { value: "PICKUP" as const, icon: <Storefront size={22} />, title: "Retrait chez le loueur", desc: mustDeliver.length ? `Indisponible : ${mustDeliver.map((l) => l.name).join(", ")} livre obligatoirement son matériel.` : "Gratuit. Vous récupérez et rapportez le matériel.", disabled: mustDeliver.length > 0 },
     { value: "DELIVERY" as const, icon: <Truck size={22} />, title: "Livraison", desc: canDeliver ? "Le loueur livre à l'adresse de votre choix. Frais selon la ville." : "Indisponible : un loueur du panier ne livre pas.", disabled: !canDeliver },
   ];
 
@@ -101,21 +119,57 @@ export function FulfillmentForm({ lenders, cities, defaults }: { lenders: Lender
       )}
 
       <fieldset>
+        <legend className="text-lg font-semibold text-ink">Créneaux</legend>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Select label={`${labels.out} le ${day(schedule.outDate)}`} name="deliverySlot" defaultValue="">
+            <option value="">À convenir avec le loueur</option>
+            {SLOTS.map((s) => <option key={s} value={s}>{slotLabel(s)}</option>)}
+          </Select>
+          <Select label={`${labels.back} le ${day(schedule.backDate)}`} name="returnSlot" defaultValue="">
+            <option value="">À convenir avec le loueur</option>
+            {SLOTS.map((s) => <option key={s} value={s}>{slotLabel(s)}</option>)}
+          </Select>
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend className="text-lg font-semibold text-ink">Contact</legend>
-        <div className="mt-4">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Input label="Événement ou société (facultatif)" name="eventName" maxLength={120} placeholder="Ex : STORY FOAM, mariage Kouadio" hint="Imprimé sur la proforma et les factures." />
           <Input label="Téléphone de contact" name="phone" type="tel" defaultValue={defaults.phone} placeholder="+225 07 00 00 00 00" hint="Utilisé par les loueurs pour la remise ou la livraison." />
         </div>
       </fieldset>
+
+      {lenders.some((l) => l.terms) && (
+        <div className="space-y-2">
+          {lenders.filter((l) => l.terms).map((l) => (
+            <details key={l.lenderId} className="rounded-control border border-line bg-surface-2/50 px-4 py-3 text-sm">
+              <summary className="cursor-pointer font-medium text-ink">Conditions générales de {l.name}</summary>
+              <p className="mt-2 max-h-64 overflow-y-auto whitespace-pre-line text-muted">{l.terms}</p>
+            </details>
+          ))}
+        </div>
+      )}
+      <Checkbox
+        label={<><span className="font-medium">Lu et approuvé</span><span className="block text-muted">J&apos;accepte la commande{lenders.some((l) => l.terms) ? " et les conditions générales des loueurs ci-dessus" : ""}. Cette acceptation en ligne remplace la signature et figure sur les factures.</span></>}
+        checked={accepted}
+        onChange={(e) => setAccepted(e.target.checked)}
+      />
 
       {error && (
         <div role="alert">
           <Notice tone="danger">{error}</Notice>
         </div>
       )}
-      <Button type="submit" size="lg" loading={pending} className="w-full sm:w-auto">
-        Bloquer le stock et passer au paiement
-      </Button>
-      <p className="text-sm text-muted">Le stock est réservé pour vous pendant quelques minutes, le temps de régler la commande.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <Button type="submit" value="pay" size="lg" loading={pending === "pay"} disabled={pending !== null} className="w-full sm:w-auto">
+          Bloquer le stock et passer au paiement
+        </Button>
+        <Button type="submit" value="quote" variant="secondary" size="lg" loading={pending === "quote"} disabled={pending !== null} className="w-full sm:w-auto">
+          Obtenir une proforma
+        </Button>
+      </div>
+      <p className="text-sm text-muted">Le stock est réservé pour vous pendant quelques minutes, le temps de régler la commande. La proforma chiffre la commande sans bloquer le stock : vous pourrez la payer depuis son lien.</p>
     </form>
   );
 }

@@ -70,8 +70,22 @@ Chaque loueur choisit son mode (`Lender.paymentMode`) : `ONLINE_FULL` (tout en l
 - **Avoir** : réduction d'une facture de location, lors d'une annulation (part remboursée et solde en espèces annulé), d'une baisse par modification, d'un solde en espèces impayé ou d'une décision de litige.
 - **Numérotation** : `F-AAAA-NNNNNN` pour les factures, `AV-AAAA-NNNNNN` pour les avoirs, via `InvoiceSequence`, incrémentée dans la transaction d'émission : pas de trou, pas de doublon. `sourceKey` (unique) rend chaque émission idempotente.
 - **TVA** : les prix du site sont TTC. Pour un loueur assujetti (`Lender.vatRegistered`), la TVA (`invoice.vat_rate_bps`, 18 %) est extraite du TTC et figée sur la facture.
+- **Contenu** : la facture de location affiche le prix de remboursement de chaque article, les dates et créneaux de remise et de récupération, et le net à payer caution comprise (la caution reste hors facture).
 - **Affichage** : `/factures/:id` (A4, « Télécharger en PDF » via l'impression du navigateur), `/factures/commande/:reservationId` (récapitulatif), listes `/mes-factures`, `/loueur/factures`, `/admin/factures`. La « situation au jour » (paiement, solde en espèces, complément, avoirs) est calculée à l'affichage et ne modifie pas la facture.
 - **En-tête** : paramètres `invoice.company_*` (raison sociale, adresse, RCCM, NCC).
+
+## Proforma et créneaux
+
+`services/quotes.ts`. Depuis la page de commande, le client peut demander une **proforma** au lieu de payer tout de suite : un devis numéroté (`PF-AAAA-NNNNNN`, même séquence sans trou que les factures), valable `quote.validity_days` jours, qui ne bloque pas le stock et n'est pas une facture.
+
+- **Montants** : calculés par `priceOrder` (partagé avec `createReservationFromHold`), donc identiques à ceux de la réservation. Le document reprend la présentation des proformas papier : prix de remboursement par article, transport, total location, caution, **net à payer**, et la part en espèces pour les loueurs en acompte + espèces.
+- **Paiement depuis le lien** (`/proformas/:id`, `POST /api/quotes/:id/pay`) : un HOLD est créé avec les lignes de la proforma, sans toucher au panier, puis le parcours de paiement habituel s'applique. Si le chiffrage actuel diffère de la proforma, le paiement est refusé (`PRICE_CHANGED`) ; une proforma expirée est refusée (`QUOTE_EXPIRED`). La disponibilité n'est garantie qu'au blocage du stock.
+- **État** : calculé (à payer, payée dès qu'une réservation issue de la proforma est réglée, expirée).
+- **Documents au nom du loueur** : proforma d'un seul loueur, factures, avoirs et constats portent l'en-tête du loueur (logo, siège, boîte postale, capital social, RCCM, NCC, saisis dans « Mon entreprise ») et son pied de page légal ; LOC'CONNECT apparaît comme émetteur sous mandat. Les conditions générales du loueur (`Lender.terms`) sont figées dans la proforma et la facture de location et imprimées en page suivante.
+- **Lu et approuvé** : le client coche l'acceptation avant de payer (page de commande, `acceptTerms`, ou paiement d'une proforma, `accept: true` obligatoire). La date est portée par le HOLD puis la réservation (`termsAcceptedAt`) et la proforma (`acceptedAt`), et imprimée à la place de la signature.
+- **Événement** : nom de l'événement ou de la société du client (`eventName`), facultatif, imprimé sous le nom du client.
+- **Livraison obligatoire** (`Lender.deliveryRequired`) : le retrait chez ce loueur est refusé (proforma et réservation) ; la livraison et la récupération sont facturées sur la commande. L'acompte en ligne reste égal à la commission (mode acompte + espèces).
+- **Créneaux** : le client choisit une tranche horaire de remise (livraison ou retrait, premier jour) et de récupération (ou de retour, dernier jour) parmi `SLOTS` (`lib/slots.ts`). Ils sont portés par le HOLD, la réservation et chaque `Delivery` (`slotStart`/`slotEnd`, `returnDate`, `returnSlotStart`/`returnSlotEnd`, modifiables par le loueur), et imprimés sur la proforma et la facture de location (`InvoiceData.schedule`).
 
 ## Caution et retour
 

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireClient } from "@/lib/auth/actor";
 import { AppError } from "@/lib/errors";
+import { slotSummary } from "@/lib/slots";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { CANCELLABLE_STATUSES, DISPUTABLE_STATUSES } from "@/lib/state-machine";
@@ -59,7 +60,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
             <StatusBadge entry={RESERVATION_STATUS[r.status]} />
             {initialPayment?.provider === "simulated" && <Badge tone="warning">Paiement simulé</Badge>}
           </div>
-          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {FULFILLMENT[r.fulfillmentType]}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
+          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {r.eventName ? `${r.eventName} · ` : ""}{FULFILLMENT[r.fulfillmentType]}{slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot) ? ` (${slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot)})` : ""}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {hold && <LinkButton href={`/paiement?hold=${hold.id}`}>Finaliser le paiement</LinkButton>}
@@ -166,6 +167,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
                     </div>
                     <p className="mt-1 flex items-start gap-1.5 text-muted"><MapPin size={14} className="mt-0.5 shrink-0" /> {delivery.address}{delivery.zone ? `, ${delivery.zone}` : ""}</p>
                     <p className="mt-0.5 text-muted">{delivery.scheduledDate ? `Prévue le ${formatDate(delivery.scheduledDate)}` : "Date à planifier"}{delivery.slotStart ? ` entre ${delivery.slotStart} et ${delivery.slotEnd}` : ""} · frais {formatFcfa(delivery.fee)}</p>
+                {delivery.returnDate && <p className="mt-0.5 text-muted">Récupération le {formatDate(delivery.returnDate)}{delivery.returnSlotStart ? ` entre ${delivery.returnSlotStart} et ${delivery.returnSlotEnd}` : ""}</p>}
                     {delivery.proofs.length > 0 && <p className="mt-1 text-muted">{delivery.proofs.length} preuve{delivery.proofs.length > 1 ? "s" : ""} de livraison enregistrée{delivery.proofs.length > 1 ? "s" : ""}.</p>}
                   </div>
                 )}

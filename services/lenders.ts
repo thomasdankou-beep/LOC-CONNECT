@@ -171,18 +171,26 @@ export const companyInput = z.object({
   logoUrl: z.string().max(500).optional(),
   coverUrl: z.string().max(500).optional(),
   offersDelivery: z.boolean().optional(),
+  /** Livraison imposée : le client ne peut pas retirer le matériel chez le loueur. */
+  deliveryRequired: z.boolean().optional(),
   deliveryFeeLocal: z.number().int().min(0).max(1_000_000).optional(),
   deliveryFeeRemote: z.number().int().min(0).max(1_000_000).optional(),
   rccm: z.string().trim().max(60).optional(),
   taxNumber: z.string().trim().max(40).optional(),
   vatRegistered: z.boolean().optional(),
+  shareCapital: z.number().int().min(0).max(1_000_000_000_000).nullable().optional(),
+  postalAddress: z.string().trim().max(120).optional(),
+  /** Conditions générales de location, imprimées sur la proforma et la facture. */
+  terms: z.string().trim().max(8000).optional(),
 });
 
 export async function updateCompany(actor: LenderActor, input: z.infer<typeof companyInput>) {
   if (!can(actor, "COMPANY_MANAGE")) throw forbidden();
   const before = await db.lender.findUniqueOrThrow({ where: { id: actor.lenderId } });
-  const updated = await db.lender.update({ where: { id: actor.lenderId }, data: input });
-  await audit(db, { userId: actor.userId, lenderId: actor.lenderId, action: "company.update", entity: "Lender", entityId: actor.lenderId, oldValue: { fees: [before.deliveryFeeLocal, before.deliveryFeeRemote], offersDelivery: before.offersDelivery }, newValue: input, meta: actor.meta });
+  // Sans livraison proposée, la livraison ne peut pas être obligatoire.
+  const offersDelivery = input.offersDelivery ?? before.offersDelivery;
+  const updated = await db.lender.update({ where: { id: actor.lenderId }, data: { ...input, ...(offersDelivery ? {} : { deliveryRequired: false }) } });
+  await audit(db, { userId: actor.userId, lenderId: actor.lenderId, action: "company.update", entity: "Lender", entityId: actor.lenderId, oldValue: { fees: [before.deliveryFeeLocal, before.deliveryFeeRemote], offersDelivery: before.offersDelivery, deliveryRequired: before.deliveryRequired }, newValue: input, meta: actor.meta });
   return updated;
 }
 

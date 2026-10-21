@@ -1,13 +1,14 @@
-import type { Prisma, ReservationStatus } from "@prisma/client";
+import type { FulfillmentType, Lender, Prisma, Product, ReservationStatus } from "@prisma/client";
 import { db, transaction, lockReservation, type Tx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { reference } from "@/lib/ids";
-import { getSettings } from "@/lib/settings";
+import { getSettings, type Settings } from "@/lib/settings";
+import { splitSlot } from "@/lib/slots";
 import { assertTransition, aggregateStatus } from "@/lib/state-machine";
 import { can, type Actor } from "@/lib/auth/actor";
 import { assertAvailable, validateRentalPeriod } from "./availability";
-import { computeTotals, depositFloorFrom, depositPercentFrom, effectivePaymentMode, priceLine, type LenderDeliveryTerms } from "./pricing";
+import { computeTotals, depositFloorFrom, depositPercentFrom, effectivePaymentMode, priceLine, type LenderDeliveryTerms, type PricedLine, type Totals } from "./pricing";
 import { notifyLender, notifyUsers } from "./notifications";
 import { assertCashSettled, syncCashSettlement } from "./cash";
 import { commissionRateFor } from "./plans";
@@ -21,6 +22,36 @@ const RESERVATION_ITEM_INCLUDE = {
   review: true,
 } satisfies Prisma.ReservationItemInclude;
 
+type OrderLine = { productId: string; quantity: number; startDate: Date; endDate: Date; product: Product & { lender: Lender } };
+
+/**
+ * Chiffrage d'une commande aux prix actuels : lignes, livraison par loueur et totaux. Partagé par la réservation et la proforma,
+ * pour qu'une proforma payée donne exactement les mêmes montants. Refuse la livraison si un loueur ne livre pas.
+ */
+export function priceOrder(settings: Settings, items: OrderLine[], fulfillment: FulfillmentType, deliveryCityId: string | null | undefined): { priced: PricedLine[]; terms: Map<string, LenderDeliveryTerms>; totals: Totals } {
+  const terms = new Map<string, LenderDeliveryTerms>();
+  for (const i of items) {
+    const l = i.product.lender;
+    terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, commissionRateBps: commissionRateFor(l, settings), paymentMode: effectivePaymentMode(l, settings) });
+  }
+  if (fulfillment !== "DELIVERY") {
+    const required = items.find((i) => i.product.lender.deliveryRequired);
+    if (required) throw new AppError("VALIDATION_ERROR", `${required.product.lender.companyName} livre obligatoirement son matériel. Choisissez la livraison pour cette commande.`);
+  }
+  if (fulfillment === "DELIVERY") {
+    for (const t of terms.values()) {
+      if (!t.offersDelivery) {
+        const name = items.find((i) => i.product.lenderId === t.lenderId)!.product.lender.companyName;
+        throw new AppError("VALIDATION_ERROR", `${name} ne propose pas la livraison. Choisissez le retrait pour cette commande.`);
+      }
+    }
+  }
+  const priced = items.map((i) =>
+    priceLine({ productId: i.productId, lenderId: i.product.lenderId, quantity: i.quantity, start: i.startDate, end: i.endDate, unitPrice: i.product.unitPrice, depositAmount: i.product.depositAmount, refundPrice: i.product.refundPrice, commissionRateBps: terms.get(i.product.lenderId)!.commissionRateBps, paymentMode: terms.get(i.product.lenderId)!.paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings), depositFloorPercent: depositFloorFrom(settings) }),
+  );
+  return { priced, terms, totals: computeTotals(priced, terms, fulfillment, deliveryCityId, settings["commission.on_delivery"]) };
+}
+
 /**
  * Crée une réservation (statut HOLD) à partir d'un HOLD actif. Les prix, commissions, cautions et frais de livraison
  * sont recalculés ici, côté serveur, et figés dans les lignes. Idempotent : un HOLD ne produit qu'une réservation.
@@ -33,6 +64,10 @@ export async function createReservationFromHold(userId: string, holdId: string, 
 
     const existing = await tx.reservation.findFirst({ where: { holdId }, include: { items: true } });
     if (existing) {
+      if (existing.status === "HOLD") {
+        // Le HOLD identique a pu être réutilisé avec d'autres détails (proforma, créneaux, acceptation) : la réservation les suit.
+        return tx.reservation.update({ where: { id: existing.id }, data: { quoteId: hold.quoteId, deliverySlot: hold.deliverySlot, returnSlot: hold.returnSlot, eventName: hold.eventName, termsAcceptedAt: hold.termsAcceptedAt }, include: { items: true } });
+      }
       if (["HOLD", "PENDING_PAYMENT", "PAID", "CONFIRMED"].includes(existing.status)) return existing;
       throw new AppError("CONFLICT", "Une réservation existe déjà pour ce blocage de stock.");
     }
@@ -47,24 +82,14 @@ export async function createReservationFromHold(userId: string, holdId: string, 
     }
     await assertAvailable(tx, hold.items.map((i) => ({ productId: i.productId, quantity: i.quantity, start: i.startDate, end: i.endDate })), { excludeHoldId: hold.id });
 
-    const terms = new Map<string, LenderDeliveryTerms>();
-    for (const i of hold.items) {
-      const l = i.product.lender;
-      terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, commissionRateBps: commissionRateFor(l, settings), paymentMode: effectivePaymentMode(l, settings) });
-    }
-    if (hold.fulfillmentType === "DELIVERY") {
-      for (const t of terms.values()) {
-        if (!t.offersDelivery) {
-          const name = hold.items.find((i) => i.product.lenderId === t.lenderId)!.product.lender.companyName;
-          throw new AppError("VALIDATION_ERROR", `${name} ne propose pas la livraison. Choisissez le retrait pour cette commande.`);
-        }
+    const { priced, totals } = priceOrder(settings, hold.items, hold.fulfillmentType, hold.deliveryCityId);
+    if (hold.quoteId) {
+      // Une proforma se paie au montant annoncé, ou pas du tout.
+      const quote = await tx.quote.findUnique({ where: { id: hold.quoteId } });
+      if (quote && (quote.total !== totals.total || quote.netToPay !== totals.subtotal + totals.deliveryFee + totals.depositTotal)) {
+        throw new AppError("PRICE_CHANGED", `Les prix ont changé depuis la proforma ${quote.number}. Demandez une nouvelle proforma depuis votre panier.`);
       }
     }
-
-    const priced = hold.items.map((i) =>
-      priceLine({ productId: i.productId, lenderId: i.product.lenderId, quantity: i.quantity, start: i.startDate, end: i.endDate, unitPrice: i.product.unitPrice, depositAmount: i.product.depositAmount, refundPrice: i.product.refundPrice, commissionRateBps: terms.get(i.product.lenderId)!.commissionRateBps, paymentMode: terms.get(i.product.lenderId)!.paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings), depositFloorPercent: depositFloorFrom(settings) }),
-    );
-    const totals = computeTotals(priced, terms, hold.fulfillmentType, hold.deliveryCityId, settings["commission.on_delivery"]);
 
     let ref = reference("LC");
     while (await tx.reservation.findUnique({ where: { reference: ref } })) ref = reference("LC");
@@ -79,6 +104,11 @@ export async function createReservationFromHold(userId: string, holdId: string, 
         deliveryCityId: hold.deliveryCityId,
         deliveryZone: hold.deliveryZone,
         contactPhone: hold.contactPhone,
+        deliverySlot: hold.deliverySlot,
+        returnSlot: hold.returnSlot,
+        eventName: hold.eventName,
+        termsAcceptedAt: hold.termsAcceptedAt,
+        quoteId: hold.quoteId,
         subtotal: totals.subtotal,
         deliveryFee: totals.deliveryFee,
         depositTotal: totals.depositTotal,
@@ -126,6 +156,11 @@ export async function createReservationFromHold(userId: string, holdId: string, 
             zone: hold.deliveryZone,
             fee: b.delivery,
             scheduledDate: new Date(Math.min(...mine.map((l) => l.start.getTime()))),
+            slotStart: splitSlot(hold.deliverySlot)?.start,
+            slotEnd: splitSlot(hold.deliverySlot)?.end,
+            returnDate: new Date(Math.max(...mine.map((l) => l.end.getTime()))),
+            returnSlotStart: splitSlot(hold.returnSlot)?.start,
+            returnSlotEnd: splitSlot(hold.returnSlot)?.end,
           },
         });
       }

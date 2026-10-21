@@ -23,6 +23,9 @@ export const deliveryUpdate = z.object({
   scheduledDate: z.string().optional(),
   slotStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   slotEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  returnDate: z.string().optional(),
+  returnSlotStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  returnSlotEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   assignedToId: z.string().nullable().optional(),
   notes: z.string().trim().max(500).optional(),
 });
@@ -55,6 +58,9 @@ export async function updateDelivery(actor: Actor & { lenderId: string }, delive
     if (input.scheduledDate) data.scheduledDate = parseDate(input.scheduledDate);
     if (input.slotStart) data.slotStart = input.slotStart;
     if (input.slotEnd) data.slotEnd = input.slotEnd;
+    if (input.returnDate) data.returnDate = parseDate(input.returnDate);
+    if (input.returnSlotStart) data.returnSlotStart = input.returnSlotStart;
+    if (input.returnSlotEnd) data.returnSlotEnd = input.returnSlotEnd;
     if (input.notes !== undefined) data.notes = input.notes;
     if (input.assignedToId !== undefined) data.assignedToId = input.assignedToId;
 

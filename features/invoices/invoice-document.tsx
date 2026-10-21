@@ -3,8 +3,10 @@ import type { ReactNode } from "react";
 import { formatFcfa } from "@/lib/money";
 import { formatDate } from "@/lib/dates";
 import { PAYMENT_METHOD, RETURN_CONDITION } from "@/lib/labels";
-import type { InvoiceData, InvoiceParty } from "@/services/invoices";
+import { SCHEDULE_LABELS, slotLabel } from "@/lib/slots";
+import type { InvoiceData, InvoiceParty, InvoiceSchedule } from "@/services/invoices";
 import { PrintButton } from "./print-button";
+import { AcceptanceBox, LegalFooter, LenderHeader, TermsSection } from "./document-parts";
 
 export type LiveStatus = { label: string; value: ReactNode; tone?: "ok" | "warn" | "danger" | "muted" };
 
@@ -36,8 +38,21 @@ function Party({ title, party, extra }: { title: string; party: InvoiceParty; ex
       {(party.phone || party.email) && <p>{[party.phone, party.email].filter(Boolean).join(" · ")}</p>}
       {party.rccm && <p>RCCM : {party.rccm}</p>}
       {party.ncc && <p>NCC : {party.ncc}</p>}
+      {party.event && <p className="mt-1">Événement : <strong>{party.event}</strong></p>}
       {extra}
     </div>
+  );
+}
+
+/** « Livraison : 11/10/2026, 14h-16h » puis « Récupération : 12/10/2026, 08h-10h ». */
+export function ScheduleLines({ schedule, fulfillment }: { schedule: InvoiceSchedule; fulfillment: "PICKUP" | "DELIVERY" }) {
+  const labels = SCHEDULE_LABELS[fulfillment];
+  const when = (date: string, slot?: string | null) => `${formatDate(new Date(`${date}T00:00:00Z`))}${slot ? `, ${slotLabel(slot)}` : ""}`;
+  return (
+    <>
+      <p>{labels.out} : <strong>{when(schedule.outDate, schedule.outSlot)}</strong></p>
+      <p>{labels.back} : <strong>{when(schedule.backDate, schedule.backSlot)}</strong></p>
+    </>
   );
 }
 
@@ -45,6 +60,9 @@ function Party({ title, party, extra }: { title: string; party: InvoiceParty; ex
 export function InvoiceDocument(p: Props) {
   const d = p.data;
   const hasDays = d.lines.some((l) => l.days != null);
+  const hasRefund = d.lines.some((l) => l.refundPrice != null);
+  // Documents émis au nom du loueur (mandat) : son en-tête, son pied de page et ses conditions générales.
+  const mandate = d.issuer !== "PLATFORM";
   const vatPct = p.vatRateBps / 100;
   return (
     <div className="mx-auto max-w-[210mm] px-4 print:max-w-none print:px-0">
@@ -60,17 +78,21 @@ export function InvoiceDocument(p: Props) {
       <article className="bg-white p-[12mm] text-[12px] leading-relaxed text-[#1f2a44] shadow-[0_8px_32px_rgba(15,27,61,0.12)] print:p-0 print:shadow-none" aria-label={`${p.title}${p.number ? ` ${p.number}` : ""}`}>
         {p.banner && <div className="mb-5 rounded-[8px] border border-[#f0c46b] bg-[#fdf3dc] px-3 py-2 text-[12px] font-medium text-[#7a4a00]">{p.banner}</div>}
 
-        <header className="flex flex-wrap items-start justify-between gap-6 border-b-2 border-[#0f1b3d] pb-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="flex size-9 items-center justify-center rounded-[8px] bg-[#1f4fd6] text-[13px] font-bold text-white">LC</span>
-              <span className="text-[18px] font-bold tracking-tight text-[#0f1b3d]">LOC&apos;CONNECT</span>
+        <div className="grid grid-cols-1 items-start gap-6 border-b-2 border-[#0f1b3d] pb-5 sm:grid-cols-[minmax(0,1fr)_auto] print:grid-cols-[minmax(0,1fr)_auto]">
+          {mandate ? (
+            <LenderHeader party={d.seller} extra={<p className="text-[11px] text-[#5b6478]">{d.seller.vatRegistered ? "Assujetti à la TVA" : "Non assujetti à la TVA"}</p>} />
+          ) : (
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex size-9 items-center justify-center rounded-[8px] bg-[#1f4fd6] text-[13px] font-bold text-white">LC</span>
+                <span className="text-[18px] font-bold tracking-tight text-[#0f1b3d]">LOC&apos;CONNECT</span>
+              </div>
+              <p className="mt-2 font-medium text-[#0f1b3d]">{d.platform.name}</p>
+              {d.platform.address && <p>{d.platform.address}</p>}
+              <p>RCCM : {d.platform.rccm} · NCC : {d.platform.ncc}</p>
+              <p>{[d.platform.phone, d.platform.email].filter(Boolean).join(" · ")}</p>
             </div>
-            <p className="mt-2 font-medium text-[#0f1b3d]">{d.platform.name}</p>
-            {d.platform.address && <p>{d.platform.address}</p>}
-            <p>RCCM : {d.platform.rccm} · NCC : {d.platform.ncc}</p>
-            <p>{[d.platform.phone, d.platform.email].filter(Boolean).join(" · ")}</p>
-          </div>
+          )}
           <div className="text-right">
             <h1 className="text-[20px] font-bold uppercase tracking-wide text-[#0f1b3d]">{p.title}</h1>
             <p className="mt-1 text-[14px] font-semibold">{p.number ? `N° ${p.number}` : "Sans numéro (provisoire)"}</p>
@@ -78,11 +100,11 @@ export function InvoiceDocument(p: Props) {
             {d.reservation && (
               <>
                 <p>Réservation : <span className="font-mono">{d.reservation.reference}</span></p>
-                <p>{d.reservation.fulfillment === "DELIVERY" ? "Livraison" : "Retrait chez le loueur"}</p>
+                {d.schedule ? <ScheduleLines schedule={d.schedule} fulfillment={d.reservation.fulfillment} /> : <p>{d.reservation.fulfillment === "DELIVERY" ? "Livraison" : "Retrait chez le loueur"}</p>}
               </>
             )}
           </div>
-        </header>
+        </div>
 
         {d.issuer === "PLATFORM" ? (
           <section className="mt-5 grid gap-3 sm:grid-cols-2 print:grid-cols-2">
@@ -93,7 +115,6 @@ export function InvoiceDocument(p: Props) {
           <>
             <p className="mt-4 text-[11px] text-[#5b6478]">Document émis par {d.platform.name} au nom et pour le compte de {d.seller.name}, dans le cadre d&apos;un mandat de facturation.</p>
             <section className="mt-3 grid gap-3 sm:grid-cols-2 print:grid-cols-2">
-              <Party title="Loueur" party={d.seller} extra={<p className="mt-1 text-[11px] text-[#5b6478]">{d.seller.vatRegistered ? "Assujetti à la TVA" : "Non assujetti à la TVA"}</p>} />
               <Party title="Client" party={d.buyer} />
             </section>
           </>
@@ -111,6 +132,7 @@ export function InvoiceDocument(p: Props) {
               <th className="py-2 pr-2 font-semibold">Désignation</th>
               <th className="px-2 py-2 text-right font-semibold">Qté</th>
               {hasDays && <th className="px-2 py-2 text-right font-semibold">Jours</th>}
+              {hasRefund && <th className="px-2 py-2 text-right font-semibold">Prix de remboursement</th>}
               <th className="px-2 py-2 text-right font-semibold">Prix unitaire</th>
               <th className="py-2 pl-2 text-right font-semibold">Montant</th>
             </tr>
@@ -121,6 +143,7 @@ export function InvoiceDocument(p: Props) {
                 <td className="py-2 pr-2"><span className="font-medium text-[#0f1b3d]">{l.label}</span>{l.detail && <span className="block text-[11px] text-[#5b6478]">{l.detail}</span>}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{l.quantity}</td>
                 {hasDays && <td className="px-2 py-2 text-right tabular-nums">{l.days ?? ""}</td>}
+                {hasRefund && <td className="px-2 py-2 text-right tabular-nums text-[#5b6478]">{l.refundPrice != null ? formatFcfa(l.refundPrice) : ""}</td>}
                 <td className="px-2 py-2 text-right tabular-nums">{l.unitPrice != null ? formatFcfa(l.unitPrice) : ""}</td>
                 <td className="py-2 pl-2 text-right tabular-nums font-medium">{formatFcfa(l.amount)}</td>
               </tr>
@@ -140,6 +163,12 @@ export function InvoiceDocument(p: Props) {
               <>
                 <div className="flex justify-between border-t border-[#0f1b3d] pt-1 text-[14px] font-bold text-[#0f1b3d]"><dt>{d.credited ? "Total de l'avoir" : "Total"}</dt><dd className="tabular-nums">{formatFcfa(p.totalTtc)}</dd></div>
                 {!d.damage && <p className="text-right text-[11px] text-[#5b6478]">TVA non applicable ({d.issuer === "PLATFORM" ? "émetteur" : "loueur"} non assujetti)</p>}
+              </>
+            )}
+            {!d.credited && d.deposit != null && d.deposit > 0 && (
+              <>
+                <div className="flex justify-between pt-1"><dt>Caution (remboursable, hors facture)</dt><dd className="tabular-nums">{formatFcfa(d.deposit)}</dd></div>
+                <div className="flex justify-between border-t border-[#0f1b3d] pt-1 text-[14px] font-bold text-[#0f1b3d]"><dt>Net à payer, caution comprise</dt><dd className="tabular-nums">{formatFcfa(p.totalTtc + d.deposit)}</dd></div>
               </>
             )}
           </dl>
@@ -213,9 +242,16 @@ export function InvoiceDocument(p: Props) {
           </ul>
         )}
 
-        <footer className="mt-8 border-t border-[#dfe3ec] pt-3 text-[10px] text-[#5b6478]">
-          {d.platform.name} · {[d.platform.phone, d.platform.email].filter(Boolean).join(" · ")} · Montants en francs CFA (XOF). Document généré par LOC&apos;CONNECT.
-        </footer>
+        {mandate && <AcceptanceBox buyerName={d.buyer.name} acceptedAt={d.acceptedAt} />}
+
+        {mandate ? (
+          <LegalFooter seller={d.seller} platform={d.platform} />
+        ) : (
+          <div className="mt-8 border-t border-[#dfe3ec] pt-3 text-[10px] text-[#5b6478]">
+            {d.platform.name} · {[d.platform.phone, d.platform.email].filter(Boolean).join(" · ")} · Montants en francs CFA (XOF). Document généré par LOC&apos;CONNECT.
+          </div>
+        )}
+        {mandate && d.terms && <TermsSection sellerName={d.seller.name} terms={d.terms} date={p.issuedAt} />}
       </article>
     </div>
   );

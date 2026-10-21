@@ -5,6 +5,7 @@ import { can } from "@/lib/auth/actor";
 import { getSettings } from "@/lib/settings";
 import { pageLender } from "@/lib/auth/page";
 import { AppError } from "@/lib/errors";
+import { slotSummary } from "@/lib/slots";
 import { formatDate, formatDateTime, todayUTC } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { DELIVERY_STATUS, DEPOSIT_STATUS, DISPUTE_STATUS, FULFILLMENT, MODIFICATION_STATUS, RESERVATION_STATUS, RETURN_CONDITION, RETURN_REPORT_STATUS } from "@/lib/labels";
@@ -58,7 +59,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <h1 className="font-mono text-2xl font-semibold text-ink sm:text-3xl">{r.reference}</h1>
             <StatusBadge entry={RESERVATION_STATUS[r.status]} />
           </div>
-          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {FULFILLMENT[r.fulfillmentType]}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
+          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {r.eventName ? `${r.eventName} · ` : ""}{FULFILLMENT[r.fulfillmentType]}{slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot) ? ` (${slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot)})` : ""}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {groups.map((g) => {
@@ -158,6 +159,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 </div>
                 <p className="mt-1 flex items-start gap-1.5 text-muted"><MapPin size={14} className="mt-0.5 shrink-0" /> {delivery.address}{delivery.zone ? `, ${delivery.zone}` : ""}</p>
                 <p className="mt-0.5 text-muted">{delivery.scheduledDate ? `Prévue le ${formatDate(delivery.scheduledDate)}` : "Date à planifier"}{delivery.slotStart ? ` entre ${delivery.slotStart} et ${delivery.slotEnd}` : ""} · frais {formatFcfa(delivery.fee)}</p>
+                {delivery.returnDate && <p className="mt-0.5 text-muted">Récupération le {formatDate(delivery.returnDate)}{delivery.returnSlotStart ? ` entre ${delivery.returnSlotStart} et ${delivery.returnSlotEnd}` : ""}</p>}
               </div>
             )}
           </Card>

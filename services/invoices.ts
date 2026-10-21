@@ -16,8 +16,29 @@ import { notifyUsers } from "./notifications";
  * Les prix du site sont TTC ; pour un loueur assujetti, la TVA est extraite du TTC.
  */
 
-export type InvoiceLine = { label: string; detail?: string; quantity: number; unitPrice: number | null; days?: number; amount: number };
-export type InvoiceParty = { name: string; address?: string | null; phone?: string | null; email?: string | null; rccm?: string | null; ncc?: string | null };
+/** `refundPrice` : prix de remboursement par unité perdue ou détruite, affiché à titre d'information. */
+export type InvoiceLine = { label: string; detail?: string; quantity: number; unitPrice: number | null; days?: number; refundPrice?: number; amount: number };
+/** Dates et créneaux de remise (livraison ou retrait) et de récupération (ou de retour), au format AAAA-MM-JJ et 14:00-16:00. */
+export type InvoiceSchedule = { outDate: string; outSlot?: string | null; backDate: string; backSlot?: string | null };
+export type InvoiceParty = {
+  name: string;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  rccm?: string | null;
+  ncc?: string | null;
+  /** Loueur : en-tête et pied de page de ses documents. */
+  logoUrl?: string | null;
+  postalAddress?: string | null;
+  shareCapital?: number | null;
+  /** Client : événement ou société pour lequel il loue. */
+  event?: string | null;
+};
+
+/** Identité du loueur telle qu'imprimée sur ses documents (figée dans chaque document). */
+export function lenderParty(l: { companyName: string; address: string | null; city: { name: string }; phone: string | null; email: string | null; rccm: string | null; taxNumber: string | null; vatRegistered: boolean; logoUrl: string | null; postalAddress: string | null; shareCapital: number | null }) {
+  return { name: l.companyName, address: [l.address, l.city.name].filter(Boolean).join(", "), phone: l.phone, email: l.email, rccm: l.rccm, ncc: l.taxNumber, vatRegistered: l.vatRegistered, logoUrl: l.logoUrl, postalAddress: l.postalAddress, shareCapital: l.shareCapital };
+}
 
 export type InvoiceData = {
   title: string;
@@ -27,6 +48,7 @@ export type InvoiceData = {
   seller: InvoiceParty & { vatRegistered: boolean };
   buyer: InvoiceParty;
   reservation?: { reference: string; fulfillment: "PICKUP" | "DELIVERY"; createdAt: string };
+  schedule?: InvoiceSchedule;
   lines: InvoiceLine[];
   /** Facture de location : caution versée (dépôt de garantie, hors facture). */
   deposit?: number;
@@ -37,13 +59,16 @@ export type InvoiceData = {
   /** Avoir : facture corrigée et motif. */
   credited?: { number: string; issuedAt: string } | null;
   reason?: string;
+  /** Facture de location : conditions générales du loueur et acceptation en ligne par le client (« Lu et approuvé »). */
+  terms?: string | null;
+  acceptedAt?: string | null;
   notes: string[];
 };
 
 export const INVOICE_TITLE: Record<InvoiceKind, string> = { RENTAL: "Facture de location", DAMAGE: "Facture de casse et perte", CREDIT_NOTE: "Avoir", SUBSCRIPTION: "Facture d'abonnement" };
 
 /** Séquence sans trou par préfixe et par année : le compteur est incrémenté dans la transaction qui émet le document. */
-async function nextNumber(tx: Tx, prefix: "F" | "AV", now = new Date()): Promise<string> {
+export async function nextNumber(tx: Tx, prefix: "F" | "AV" | "PF", now = new Date()): Promise<string> {
   const key = `${prefix}-${now.getUTCFullYear()}`;
   const rows = await tx.$queryRaw<{ last: number }[]>`INSERT INTO "InvoiceSequence" ("key", "last") VALUES (${key}, 1) ON CONFLICT ("key") DO UPDATE SET "last" = "InvoiceSequence"."last" + 1 RETURNING "last"`;
   return `${key}-${String(rows[0].last).padStart(6, "0")}`;
@@ -61,8 +86,8 @@ async function parties(tx: Tx, reservationId: string, lenderId: string) {
   const reservation = await tx.reservation.findUniqueOrThrow({ where: { id: reservationId }, include: { client: true } });
   const lender = await tx.lender.findUniqueOrThrow({ where: { id: lenderId }, include: { city: true } });
   const platform: InvoiceParty = { name: settings["invoice.company_name"], address: settings["invoice.company_address"], rccm: settings["invoice.company_rccm"], ncc: settings["invoice.company_ncc"], phone: settings["site.support_phone"], email: settings["site.support_email"] };
-  const seller = { name: lender.companyName, address: [lender.address, lender.city.name].filter(Boolean).join(", "), phone: lender.phone, email: lender.email, rccm: lender.rccm, ncc: lender.taxNumber, vatRegistered: lender.vatRegistered };
-  const buyer: InvoiceParty = { name: `${reservation.client.firstName} ${reservation.client.lastName}`, phone: reservation.contactPhone ?? reservation.client.phone, email: reservation.client.email, address: reservation.deliveryAddress ?? reservation.client.deliveryAddress };
+  const seller = lenderParty(lender);
+  const buyer: InvoiceParty = { name: `${reservation.client.firstName} ${reservation.client.lastName}`, phone: reservation.contactPhone ?? reservation.client.phone, email: reservation.client.email, address: reservation.deliveryAddress ?? reservation.client.deliveryAddress, event: reservation.eventName };
   return {
     settings,
     reservation,
@@ -100,6 +125,26 @@ async function createInvoice(
 
 const period = (start: Date, end: Date) => `du ${formatDate(start)} au ${formatDate(end)}`;
 
+/**
+ * Remise le premier jour de location, récupération le dernier (fin de période). Les créneaux planifiés par le loueur
+ * sur sa livraison priment sur ceux choisis par le client à la commande.
+ */
+export function scheduleOf(
+  lines: { startDate: Date; endDate: Date }[],
+  deliverySlot: string | null,
+  returnSlot: string | null,
+  delivery?: { scheduledDate: Date | null; slotStart: string | null; slotEnd: string | null; returnDate: Date | null; returnSlotStart: string | null; returnSlotEnd: string | null } | null,
+): InvoiceSchedule {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const join = (a: string | null, b: string | null) => (a && b ? `${a}-${b}` : null);
+  return {
+    outDate: iso(delivery?.scheduledDate ?? new Date(Math.min(...lines.map((l) => l.startDate.getTime())))),
+    outSlot: join(delivery?.slotStart ?? null, delivery?.slotEnd ?? null) ?? deliverySlot,
+    backDate: iso(delivery?.returnDate ?? new Date(Math.max(...lines.map((l) => l.endDate.getTime())))),
+    backSlot: join(delivery?.returnSlotStart ?? null, delivery?.returnSlotEnd ?? null) ?? returnSlot,
+  };
+}
+
 /** Factures de location émises à la confirmation du paiement initial : une par loueur. */
 export async function issueRentalInvoices(tx: Tx, reservationId: string, paymentId: string) {
   const reservation = await tx.reservation.findUniqueOrThrow({ where: { id: reservationId }, include: { items: { orderBy: { createdAt: "asc" } }, deliveries: true, cashSettlements: true } });
@@ -109,7 +154,7 @@ export async function issueRentalInvoices(tx: Tx, reservationId: string, payment
     const mine = reservation.items.filter((i) => i.lenderId === lenderId);
     const { settings, lender, base } = await parties(tx, reservationId, lenderId);
     const delivery = reservation.deliveries.find((d) => d.lenderId === lenderId);
-    const lines: InvoiceLine[] = mine.map((i) => ({ label: i.productName, detail: period(i.startDate, i.endDate), quantity: i.quantity, days: i.days, unitPrice: i.unitPrice, amount: i.subtotal }));
+    const lines: InvoiceLine[] = mine.map((i) => ({ label: i.productName, detail: period(i.startDate, i.endDate), quantity: i.quantity, days: i.days, unitPrice: i.unitPrice, refundPrice: i.refundPrice, amount: i.subtotal }));
     if (delivery && delivery.fee > 0) lines.push({ label: "Livraison", detail: delivery.address ?? undefined, quantity: 1, unitPrice: delivery.fee, amount: delivery.fee });
     const total = sum(lines.map((l) => l.amount));
     const cashAmount = sum(mine.map((i) => i.cashDue)) + (reservation.cashSettlements.find((c) => c.lenderId === lenderId)?.deliveryDue ?? 0);
@@ -127,6 +172,9 @@ export async function issueRentalInvoices(tx: Tx, reservationId: string, payment
       data: {
         ...base,
         title: INVOICE_TITLE.RENTAL,
+        schedule: scheduleOf(mine, reservation.deliverySlot, reservation.returnSlot, delivery),
+        terms: lender.terms,
+        acceptedAt: reservation.termsAcceptedAt?.toISOString() ?? null,
         lines,
         deposit: sum(mine.map((i) => i.depositAmount)),
         settlement: { paymentMode, onlineAmount: total - cashAmount, cashAmount, method: payment.method, paymentReference: payment.reference, paidAt: (payment.paidAt ?? new Date()).toISOString() },
