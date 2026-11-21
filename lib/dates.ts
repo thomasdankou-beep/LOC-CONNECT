@@ -1,5 +1,6 @@
 /**
- * Les dates de location sont des jours calendaires UTC. Une période est l'intervalle semi-ouvert [début, fin).
+ * Les dates de location sont des jours calendaires UTC. La période facturée est l'intervalle semi-ouvert [début, fin).
+ * L'immobilisation physique ajoute le délai de retour défini dans services/availability.ts.
  * Règle de chevauchement du cahier des charges : début demandé < fin existante ET fin demandée > début existant.
  */
 const MS_DAY = 86_400_000;

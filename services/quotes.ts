@@ -4,7 +4,7 @@ import { db, transaction } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit, type RequestMeta } from "@/lib/audit";
 import { addDays, formatDate } from "@/lib/dates";
-import { formatFcfa, sum } from "@/lib/money";
+import { formatFcfa } from "@/lib/money";
 import { getSettings } from "@/lib/settings";
 import { can, type Actor } from "@/lib/auth/actor";
 import type { Slot } from "@/lib/slots";
@@ -13,6 +13,7 @@ import { getCart } from "./cart";
 import { createHold, holdInput } from "./holds";
 import { lenderParty, nextNumber, scheduleOf, type InvoiceLine, type InvoiceParty, type InvoiceSchedule } from "./invoices";
 import { priceOrder } from "./reservations";
+import { assertQuotePricing, pricingFingerprint, type TermsSnapshot } from "./order-snapshot";
 
 /**
  * Proforma : devis chiffré du panier, envoyé au client avant le paiement. Ce n'est pas une facture.
@@ -26,6 +27,7 @@ export const quoteInput = holdInput.omit({ replaceExisting: true, acceptTerms: t
 export const payQuoteInput = z.object({ accept: z.literal(true, { message: "Cochez « Lu et approuvé » pour accepter la proforma et les conditions générales." }) });
 
 export type QuoteGroup = {
+  lenderId: string;
   seller: InvoiceParty;
   /** Conditions générales du loueur au moment de la proforma. */
   terms?: string | null;
@@ -39,6 +41,7 @@ export type QuoteGroup = {
 };
 
 export type QuoteData = {
+  pricingFingerprint?: string;
   platform: InvoiceParty;
   buyer: InvoiceParty;
   fulfillment: "PICKUP" | "DELIVERY";
@@ -102,6 +105,7 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
     });
     if (b.delivery > 0) lines.push({ label: "Transport (livraison et récupération)", detail: address ?? undefined, quantity: 1, unitPrice: b.delivery, amount: b.delivery });
     return {
+      lenderId: b.lenderId,
       seller: lenderParty(lender),
       terms: lender.terms,
       lines,
@@ -122,6 +126,7 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
     "Ce document n'est pas une facture. Les factures sont émises par chaque loueur à la confirmation du paiement.",
   ];
   const data: QuoteData = {
+    pricingFingerprint: pricingFingerprint(priced, totals, items),
     platform: { name: settings["invoice.company_name"], address: settings["invoice.company_address"], rccm: settings["invoice.company_rccm"], ncc: settings["invoice.company_ncc"], phone: settings["site.support_phone"], email: settings["site.support_email"] },
     buyer: { name: `${user.firstName} ${user.lastName}`, phone: input.contactPhone || user.phone, email: user.email, address, event: input.eventName || null },
     fulfillment: input.fulfillmentType,
@@ -187,10 +192,9 @@ export async function payQuote(userId: string, quoteId: string, input: z.infer<t
   if (status === "EXPIRED") throw new AppError("QUOTE_EXPIRED", `La proforma ${quote.number} a expiré le ${formatDate(quote.validUntil)}. Demandez-en une nouvelle depuis votre panier.`);
 
   const settings = await getSettings();
-  const { totals } = priceOrder(settings, quote.items, quote.fulfillmentType, quote.deliveryCityId);
-  if (totals.total !== quote.total || sum([totals.subtotal, totals.deliveryFee, totals.depositTotal]) !== quote.netToPay) {
-    throw new AppError("PRICE_CHANGED", `Les prix ont changé depuis la proforma ${quote.number}. Demandez une nouvelle proforma depuis votre panier.`);
-  }
+  const { priced, totals } = priceOrder(settings, quote.items, quote.fulfillmentType, quote.deliveryCityId);
+  assertQuotePricing(quote, priced, totals, quote.items);
+  const terms: TermsSnapshot = (quote.data as unknown as QuoteData).groups.map((g) => ({ lenderId: g.lenderId, terms: g.terms ?? null }));
   const hold = await createHold(
     userId,
     {
@@ -206,9 +210,8 @@ export async function payQuote(userId: string, quoteId: string, input: z.infer<t
       replaceExisting: true,
     },
     meta,
-    { lines: quote.items.map((i) => ({ productId: i.productId, quantity: i.quantity, startDate: i.startDate, endDate: i.endDate })), quoteId: quote.id },
+    { lines: quote.items.map((i) => ({ productId: i.productId, quantity: i.quantity, startDate: i.startDate, endDate: i.endDate })), quoteId: quote.id, terms },
   );
-  await db.quote.update({ where: { id: quote.id }, data: { acceptedAt: hold.termsAcceptedAt ?? new Date() } });
   await audit(db, { userId, action: "quote.accept", entity: "Quote", entityId: quote.id, newValue: { holdId: hold.id }, meta });
   return hold;
 }

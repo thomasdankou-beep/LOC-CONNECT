@@ -12,6 +12,7 @@ import { Notice } from "@/components/ui/states";
 import { FulfillmentForm } from "@/features/checkout/fulfillment-form";
 import { CheckoutSteps } from "@/features/checkout/steps";
 import { ShieldCheck } from "@/components/ui/icons";
+import { snapshotTerms, termsVersion } from "@/services/order-snapshot";
 
 export const metadata: Metadata = { title: "Récapitulatif de la réservation", robots: { index: false } };
 
@@ -39,6 +40,7 @@ export default async function ReservationPage() {
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_24rem]">
         <Card className="p-6 sm:p-8">
           <FulfillmentForm
+            termsVersion={termsVersion(snapshotTerms(lenders))}
             lenders={lenders.map((l) => ({ lenderId: l.id, name: l.companyName, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, terms: l.terms, deliveryRequired: l.deliveryRequired }))}
             cities={cities.map((c) => ({ id: c.id, name: c.name }))}
             defaults={{ address: user.deliveryAddress ?? "", cityId: user.cityId ?? "", phone: user.phone ?? "" }}

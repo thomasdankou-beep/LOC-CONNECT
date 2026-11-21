@@ -19,7 +19,7 @@ Règle structurante : **les pages serveur et les routes API appellent les mêmes
 - Une **réservation** regroupe des **lignes** (`ReservationItem`), chacune liée à **un loueur**. Prix unitaire, sous-total, commission, caution et prix de remboursement sont **figés** sur la ligne à la création.
 - Le statut est porté par la **ligne** (DRAFT, HOLD, PENDING_PAYMENT, PAID, CONFIRMED, READY, DELIVERING, DELIVERED, IN_USE, RETURN_PENDING, RETURNED, COMPLETED, CANCELLED, REFUNDED, DISPUTED). Le statut global de la réservation est **calculé** à partir de ses lignes. Un litige ciblé sur un loueur ne change pas le statut des lignes des autres loueurs.
 - Toutes les transitions passent par `lib/state-machine.ts` (table de transitions autorisées) et sont historisées (`ReservationStatusHistory`).
-- Périodes : intervalle semi-ouvert `[début, fin)` en jours calendaires UTC. Chevauchement : `début demandé < fin existante ET fin demandée > début existante`.
+- Facturation : intervalle semi-ouvert `[début, fin)` en jours calendaires UTC. L'immobilisation physique ajoute `booking.return_buffer_days` à la fin (1 par défaut) : le jour de récupération reste indisponible, sans jour facturé supplémentaire.
 
 ## Disponibilité et concurrence
 
@@ -80,9 +80,12 @@ Chaque loueur choisit son mode (`Lender.paymentMode`) : `ONLINE_FULL` (tout en l
 
 - **Montants** : calculés par `priceOrder` (partagé avec `createReservationFromHold`), donc identiques à ceux de la réservation. Le document reprend la présentation des proformas papier : prix de remboursement par article, transport, total location, caution, **net à payer**, et la part en espèces pour les loueurs en acompte + espèces.
 - **Paiement depuis le lien** (`/proformas/:id`, `POST /api/quotes/:id/pay`) : un HOLD est créé avec les lignes de la proforma, sans toucher au panier, puis le parcours de paiement habituel s'applique. Si le chiffrage actuel diffère de la proforma, le paiement est refusé (`PRICE_CHANGED`) ; une proforma expirée est refusée (`QUOTE_EXPIRED`). La disponibilité n'est garantie qu'au blocage du stock.
+- **Contrôle par ligne** : une empreinte du chiffrage couvre aussi les prix de remboursement, les règles de caution, les commissions et les parts en espèces. Des variations compensées ne sont pas acceptées silencieusement. Les anciennes proformas sans empreinte doivent être rééditées.
+- **Reprise** : un HOLD n'est réutilisé que si ses lignes, sa remise, son adresse, ses créneaux, sa proforma et ses conditions acceptées sont identiques. Sinon, une préparation non payée est remplacée et annulée proprement ; un paiement en cours interdit ce remplacement.
 - **État** : calculé (à payer, payée dès qu'une réservation issue de la proforma est réglée, expirée).
 - **Documents au nom du loueur** : proforma d'un seul loueur, factures, avoirs et constats portent l'en-tête du loueur (logo, siège, boîte postale, capital social, RCCM, NCC, saisis dans « Mon entreprise ») et son pied de page légal ; LOC'CONNECT apparaît comme émetteur sous mandat. Les conditions générales du loueur (`Lender.terms`) sont figées dans la proforma et la facture de location et imprimées en page suivante.
 - **Lu et approuvé** : le client coche l'acceptation avant de payer (page de commande, `acceptTerms`, ou paiement d'une proforma, `accept: true` obligatoire). La date est portée par le HOLD puis la réservation (`termsAcceptedAt`) et la proforma (`acceptedAt`), et imprimée à la place de la signature.
+- **Preuve de consentement** : `termsSnapshot` conserve les conditions exactes par loueur, reprises par la facture. L'initialisation d'un nouveau paiement exige cet instantané et sa date d'acceptation. Le formulaire transmet la version des conditions affichées pour détecter un changement avant envoi.
 - **Événement** : nom de l'événement ou de la société du client (`eventName`), facultatif, imprimé sous le nom du client.
 - **Livraison obligatoire** (`Lender.deliveryRequired`) : le retrait chez ce loueur est refusé (proforma et réservation) ; la livraison et la récupération sont facturées sur la commande. L'acompte en ligne reste égal à la commission (mode acompte + espèces).
 - **Créneaux** : le client choisit une tranche horaire de remise (livraison ou retrait, premier jour) et de récupération (ou de retour, dernier jour) parmi `SLOTS` (`lib/slots.ts`). Ils sont portés par le HOLD, la réservation et chaque `Delivery` (`slotStart`/`slotEnd`, `returnDate`, `returnSlotStart`/`returnSlotEnd`, modifiables par le loueur), et imprimés sur la proforma et la facture de location (`InvoiceData.schedule`).
@@ -100,6 +103,8 @@ Le constat de retour impose `retourné + perdu = loué`. La retenue est `min(per
 ## Modification
 
 Demandes versionnées (`ModificationRequest` + lignes). Validation obligatoire du loueur sous `modification.lender_response_hours`, sinon escalade à l'administration (relance, acceptation ou refus). Le complément est un paiement distinct (`kind = MODIFICATION`) ; la baisse est remboursée intégralement. Une réservation n'est jamais modifiée avant validation et, si nécessaire, paiement.
+
+Une modification recalcule aussi les dates de livraison et de récupération du loueur. L'ajout d'un nouveau loueur nécessite une nouvelle commande pour valider ses conditions et sa remise. Les ajouts incompatibles avec la livraison sont refusés, y compris au contrôle final ; si un complément a déjà été réglé, il est remboursé. Voir [la recette détaillée](RECETTE_PARCOURS_LOCATION.md) pour la migration et le périmètre du pilote.
 
 ## Droits (RBAC)
 

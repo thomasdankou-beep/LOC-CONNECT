@@ -14,10 +14,11 @@ import { SCHEDULE_LABELS, SLOTS, slotLabel } from "@/lib/slots";
 type LenderTerms = { lenderId: string; name: string; cityId: string; offersDelivery: boolean; feeLocal: number; feeRemote: number; terms: string | null; deliveryRequired: boolean };
 type City = { id: string; name: string };
 
-export function FulfillmentForm({ lenders, cities, defaults, schedule }: { lenders: LenderTerms[]; cities: City[]; defaults: { address: string; cityId: string; phone: string }; schedule: { outDate: string; backDate: string } }) {
+export function FulfillmentForm({ lenders, cities, defaults, schedule, termsVersion }: { lenders: LenderTerms[]; cities: City[]; defaults: { address: string; cityId: string; phone: string }; schedule: { outDate: string; backDate: string }; termsVersion: string }) {
   const router = useRouter();
   const canDeliver = lenders.every((l) => l.offersDelivery);
   const mustDeliver = lenders.filter((l) => l.deliveryRequired);
+  const incompatible = mustDeliver.length > 0 && !canDeliver;
   const [mode, setMode] = useState<"PICKUP" | "DELIVERY">(mustDeliver.length > 0 && canDeliver ? "DELIVERY" : "PICKUP");
   const [cityId, setCityId] = useState(defaults.cityId);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +58,7 @@ export function FulfillmentForm({ lenders, cities, defaults, schedule }: { lende
         router.push(`/proformas/${quote.id}`);
         return;
       }
-      const hold = await api<{ id: string }>("/api/holds", { body: { ...body, acceptTerms: true, replaceExisting: true } });
+      const hold = await api<{ id: string }>("/api/holds", { body: { ...body, acceptTerms: true, termsVersion, replaceExisting: true } });
       router.push(`/paiement?hold=${hold.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : intent === "quote" ? "Impossible de préparer la proforma pour le moment." : "Impossible de bloquer le stock pour le moment.");
@@ -72,6 +73,15 @@ export function FulfillmentForm({ lenders, cities, defaults, schedule }: { lende
     { value: "PICKUP" as const, icon: <Storefront size={22} />, title: "Retrait chez le loueur", desc: mustDeliver.length ? `Indisponible : ${mustDeliver.map((l) => l.name).join(", ")} livre obligatoirement son matériel.` : "Gratuit. Vous récupérez et rapportez le matériel.", disabled: mustDeliver.length > 0 },
     { value: "DELIVERY" as const, icon: <Truck size={22} />, title: "Livraison", desc: canDeliver ? "Le loueur livre à l'adresse de votre choix. Frais selon la ville." : "Indisponible : un loueur du panier ne livre pas.", disabled: !canDeliver },
   ];
+
+  if (incompatible) return (
+    <div className="space-y-4">
+      <Notice tone="warning" title="Séparez les articles par mode de remise">
+        {mustDeliver.map((l) => l.name).join(", ")} impose la livraison, tandis que {lenders.filter((l) => !l.offersDelivery).map((l) => l.name).join(", ")} propose uniquement le retrait. Passez une commande pour les articles livrés et une autre pour les articles à retirer.
+      </Notice>
+      <Button onClick={() => router.push("/panier")}>Modifier mon panier</Button>
+    </div>
+  );
 
   return (
     <form onSubmit={submit} className="space-y-8">
@@ -170,6 +180,7 @@ export function FulfillmentForm({ lenders, cities, defaults, schedule }: { lende
         </Button>
       </div>
       <p className="text-sm text-muted">Le stock est réservé pour vous pendant quelques minutes, le temps de régler la commande. La proforma chiffre la commande sans bloquer le stock : vous pourrez la payer depuis son lien.</p>
+      <p className="text-sm text-muted">Le matériel reste indisponible pour une autre location le jour de sa récupération. Ce jour de retour n&apos;ajoute pas de journée facturée.</p>
     </form>
   );
 }

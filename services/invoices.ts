@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { can, type Actor } from "@/lib/auth/actor";
 import { notifyUsers } from "./notifications";
+import { readTermsSnapshot } from "./order-snapshot";
 
 /**
  * Facturation. LOC'CONNECT émet les factures au nom et pour le compte de chaque loueur (mandat de facturation) :
@@ -173,7 +174,7 @@ export async function issueRentalInvoices(tx: Tx, reservationId: string, payment
         ...base,
         title: INVOICE_TITLE.RENTAL,
         schedule: scheduleOf(mine, reservation.deliverySlot, reservation.returnSlot, delivery),
-        terms: lender.terms,
+        terms: readTermsSnapshot(reservation.termsSnapshot)?.find((t) => t.lenderId === lenderId)?.terms ?? null,
         acceptedAt: reservation.termsAcceptedAt?.toISOString() ?? null,
         lines,
         deposit: sum(mine.map((i) => i.depositAmount)),

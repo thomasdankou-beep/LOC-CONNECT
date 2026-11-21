@@ -717,6 +717,7 @@ model Hold {
   returnSlot             String? // créneau de récupération ou de retour
   eventName              String? // événement ou société du client, imprimé sur les documents
   termsAcceptedAt        DateTime? // « Lu et approuvé » coché par le client
+  termsSnapshot          Json? // conditions exactes acceptées, indexées par loueur
   quoteId                String? // proforma payée par ce blocage
   convertedReservationId String?
   releasedAt             DateTime?
@@ -761,6 +762,7 @@ model Reservation {
   returnSlot         String? // créneau de récupération ou de retour
   eventName          String?
   termsAcceptedAt    DateTime? // « Lu et approuvé » coché par le client avant le paiement
+  termsSnapshot      Json? // conditions acceptées, conservées jusqu'à la facture
   quoteId            String?
   quote              Quote?            @relation(fields: [quoteId], references: [id])
   subtotal           Int

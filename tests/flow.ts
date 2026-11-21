@@ -17,6 +17,7 @@ export async function bookAndPay(client: { user: { id: string }; actor: Actor },
     deliveryAddress: opts.delivery ? "Rue des Jardins, Cocody" : undefined,
     deliveryCityId: opts.cityId,
     replaceExisting: true,
+    acceptTerms: true,
   });
   const reservation = await createReservationFromHold(client.user.id, hold.id);
   const { payment } = await initiatePayment(client.actor, { reservationId: reservation.id, method: "WAVE", idempotencyKey: randomUUID() });

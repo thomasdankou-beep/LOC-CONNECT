@@ -22,6 +22,7 @@ type Props = {
   onChange: (start: string | null, end: string | null) => void;
   onAvailability?: (map: Record<string, DayInfo>) => void;
   minDays?: number;
+  returnBufferDays?: number;
   months?: 1 | 2;
 };
 
@@ -29,7 +30,7 @@ type Props = {
  * Calendrier de sélection d'une période de location. La disponibilité jour par jour vient du serveur
  * (stock moins réservations, HOLD actifs et indisponibilités du loueur). Le jour de fin est le jour de retour : il n'est pas facturé.
  */
-export function RangeCalendar({ productId, start, end, onChange, onAvailability, minDays = 1, months = 2 }: Props) {
+export function RangeCalendar({ productId, start, end, onChange, onAvailability, minDays = 1, returnBufferDays = 1, months = 2 }: Props) {
   const today = useMemo(() => todayUTC(), []);
   const [view, setView] = useState(() => monthStart(start ? new Date(`${start}T00:00:00Z`) : today));
   const [days, setDays] = useState<Record<string, DayInfo>>({});
@@ -42,7 +43,7 @@ export function RangeCalendar({ productId, start, end, onChange, onAvailability,
     setLoading(true);
     setError(false);
     const from = view;
-    const to = addMonths(view, months);
+    const to = addDays(addMonths(view, months), returnBufferDays);
     api<DayInfo[]>(`/api/products/${productId}/availability?start=${toISODate(from)}&end=${toISODate(to)}`)
       .then((rows) => {
         if (cancelled) return;
@@ -58,7 +59,7 @@ export function RangeCalendar({ productId, start, end, onChange, onAvailability,
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId, view, months]);
+  }, [productId, view, months, returnBufferDays]);
 
   useEffect(() => {
     onAvailability?.(days);
@@ -69,7 +70,8 @@ export function RangeCalendar({ productId, start, end, onChange, onAvailability,
   const free = (iso: string) => (days[iso]?.available ?? 1) > 0;
 
   function allFree(from: string, to: string) {
-    for (let d = new Date(`${from}T00:00:00Z`); toISODate(d) < to; d = addDays(d, 1)) if (!free(toISODate(d))) return false;
+    const until = addDays(new Date(`${to}T00:00:00Z`), returnBufferDays);
+    for (let d = new Date(`${from}T00:00:00Z`); d < until; d = addDays(d, 1)) if (!free(toISODate(d))) return false;
     return true;
   }
 

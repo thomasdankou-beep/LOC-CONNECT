@@ -1,5 +1,5 @@
 import type { FulfillmentType, Lender, Prisma, Product, ReservationStatus } from "@prisma/client";
-import { db, transaction, lockReservation, type Tx } from "@/lib/db";
+import { db, transaction, lockReservation, lockClientOrders, type Tx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { reference } from "@/lib/ids";
@@ -12,6 +12,7 @@ import { computeTotals, depositFloorFrom, depositPercentFrom, effectivePaymentMo
 import { notifyLender, notifyUsers } from "./notifications";
 import { assertCashSettled, syncCashSettlement } from "./cash";
 import { commissionRateFor } from "./plans";
+import { assertQuotePricing } from "./order-snapshot";
 
 const RESERVATION_ITEM_INCLUDE = {
   product: { select: { id: true, slug: true, name: true, photos: { orderBy: { position: "asc" as const }, take: 1 } } },
@@ -34,6 +35,7 @@ export function priceOrder(settings: Settings, items: OrderLine[], fulfillment: 
     const l = i.product.lender;
     terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, commissionRateBps: commissionRateFor(l, settings), paymentMode: effectivePaymentMode(l, settings) });
   }
+  if (items.some((i) => i.product.lender.deliveryRequired) && [...terms.values()].some((t) => !t.offersDelivery)) throw new AppError("VALIDATION_ERROR", "Ce panier mélange livraison obligatoire et retrait uniquement. Séparez les articles livrés et les articles à retirer en deux commandes.");
   if (fulfillment !== "DELIVERY") {
     const required = items.find((i) => i.product.lender.deliveryRequired);
     if (required) throw new AppError("VALIDATION_ERROR", `${required.product.lender.companyName} livre obligatoirement son matériel. Choisissez la livraison pour cette commande.`);
@@ -59,20 +61,19 @@ export function priceOrder(settings: Settings, items: OrderLine[], fulfillment: 
 export async function createReservationFromHold(userId: string, holdId: string, actorId: string = userId) {
   const settings = await getSettings();
   return transaction(async (tx) => {
+    await lockClientOrders(tx, userId);
     const hold = await tx.hold.findFirst({ where: { id: holdId, userId }, include: { items: { include: { product: { include: { lender: true } } } } } });
     if (!hold) throw notFound("Blocage de stock");
 
     const existing = await tx.reservation.findFirst({ where: { holdId }, include: { items: true } });
+    // Une requête rejouée après paiement restitue le résultat déjà acquis, sans reconvertir le HOLD.
+    if (existing && hold.status === "CONVERTED" && ["PAID", "CONFIRMED"].includes(existing.status)) return existing;
+    const now = new Date();
+    if (hold.status !== "ACTIVE" || hold.expiresAt <= now) throw new AppError("HOLD_EXPIRED", "Le blocage de stock a expiré. Relancez le paiement depuis votre panier.");
     if (existing) {
-      if (existing.status === "HOLD") {
-        // Le HOLD identique a pu être réutilisé avec d'autres détails (proforma, créneaux, acceptation) : la réservation les suit.
-        return tx.reservation.update({ where: { id: existing.id }, data: { quoteId: hold.quoteId, deliverySlot: hold.deliverySlot, returnSlot: hold.returnSlot, eventName: hold.eventName, termsAcceptedAt: hold.termsAcceptedAt }, include: { items: true } });
-      }
       if (["HOLD", "PENDING_PAYMENT", "PAID", "CONFIRMED"].includes(existing.status)) return existing;
       throw new AppError("CONFLICT", "Une réservation existe déjà pour ce blocage de stock.");
     }
-    const now = new Date();
-    if (hold.status !== "ACTIVE" || hold.expiresAt <= now) throw new AppError("HOLD_EXPIRED", "Le blocage de stock a expiré. Relancez le paiement depuis votre panier.");
 
     for (const i of hold.items) {
       if (i.product.status !== "PUBLISHED" || i.product.deletedAt || i.product.lender.status !== "APPROVED") {
@@ -86,9 +87,8 @@ export async function createReservationFromHold(userId: string, holdId: string, 
     if (hold.quoteId) {
       // Une proforma se paie au montant annoncé, ou pas du tout.
       const quote = await tx.quote.findUnique({ where: { id: hold.quoteId } });
-      if (quote && (quote.total !== totals.total || quote.netToPay !== totals.subtotal + totals.deliveryFee + totals.depositTotal)) {
-        throw new AppError("PRICE_CHANGED", `Les prix ont changé depuis la proforma ${quote.number}. Demandez une nouvelle proforma depuis votre panier.`);
-      }
+      if (!quote || quote.validUntil <= now) throw new AppError("QUOTE_EXPIRED", "Cette proforma a expiré. Demandez-en une nouvelle.");
+      assertQuotePricing(quote, priced, totals, hold.items);
     }
 
     let ref = reference("LC");
@@ -108,6 +108,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
         returnSlot: hold.returnSlot,
         eventName: hold.eventName,
         termsAcceptedAt: hold.termsAcceptedAt,
+        termsSnapshot: hold.termsSnapshot == null ? undefined : hold.termsSnapshot as Prisma.InputJsonValue,
         quoteId: hold.quoteId,
         subtotal: totals.subtotal,
         deliveryFee: totals.deliveryFee,

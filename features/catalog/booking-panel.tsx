@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api-client";
-import { daysBetween, parseDate } from "@/lib/dates";
+import { addDays, daysBetween, parseDate } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { RangeCalendar, type DayInfo } from "./range-calendar";
 
 type Props = {
   productId: string;
+  returnBufferDays: number;
   unitPrice: number;
   deposit: number;
   /** Caution en % de la location (null : caution fixe par unité). */
@@ -30,7 +31,7 @@ type Props = {
   initialEnd?: string;
 };
 
-export function BookingPanel({ productId, unitPrice, deposit, depositPercent, depositFloorUnit, stock, minDays, maxDays, signedIn, canBook, initialStart, initialEnd }: Props) {
+export function BookingPanel({ productId, returnBufferDays, unitPrice, deposit, depositPercent, depositFloorUnit, stock, minDays, maxDays, signedIn, canBook, initialStart, initialEnd }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const [start, setStart] = useState<string | null>(initialStart ?? null);
@@ -44,12 +45,12 @@ export function BookingPanel({ productId, unitPrice, deposit, depositPercent, de
   const maxQty = useMemo(() => {
     if (!start || !end) return stock;
     let min = stock;
-    for (let d = parseDate(start); d < parseDate(end); d = new Date(d.getTime() + 86_400_000)) {
+    for (let d = parseDate(start); d < addDays(parseDate(end), returnBufferDays); d = addDays(d, 1)) {
       const info = avail[d.toISOString().slice(0, 10)];
       if (info) min = Math.min(min, info.available);
     }
     return Math.max(0, min);
-  }, [start, end, avail, stock]);
+  }, [start, end, avail, stock, returnBufferDays]);
 
   const tooLong = maxDays != null && days > maxDays;
   const rental = unitPrice * qty * days;
@@ -90,7 +91,7 @@ export function BookingPanel({ productId, unitPrice, deposit, depositPercent, de
       </p>
 
       <div className="mt-5">
-        <RangeCalendar productId={productId} start={start} end={end} minDays={minDays} months={1} onChange={(s, e) => { setStart(s); setEnd(e); setError(null); }} onAvailability={setAvail} />
+        <RangeCalendar productId={productId} start={start} end={end} minDays={minDays} returnBufferDays={returnBufferDays} months={1} onChange={(s, e) => { setStart(s); setEnd(e); setError(null); }} onAvailability={setAvail} />
       </div>
 
       <div className="mt-5 flex items-center justify-between rounded-control border border-line px-3 py-2">

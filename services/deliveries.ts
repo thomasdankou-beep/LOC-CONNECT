@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { DeliveryStatus, Prisma } from "@prisma/client";
-import { db, transaction } from "@/lib/db";
+import { db, transaction, lockReservation } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { parseDate } from "@/lib/dates";
@@ -18,14 +18,17 @@ const DELIVERY_FLOW: Record<DeliveryStatus, DeliveryStatus[]> = {
   RETURNED: [],
 };
 
+const clockInput = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure invalide (HH:MM).");
+const dateInput = z.string().refine((value) => { try { parseDate(value); return true; } catch { return false; } }, "Date invalide (AAAA-MM-JJ).");
+
 export const deliveryUpdate = z.object({
   status: z.enum(["PENDING", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED", "FAILED", "RETURNED"]).optional(),
-  scheduledDate: z.string().optional(),
-  slotStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  slotEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  returnDate: z.string().optional(),
-  returnSlotStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  returnSlotEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  scheduledDate: dateInput.optional(),
+  slotStart: clockInput.optional(),
+  slotEnd: clockInput.optional(),
+  returnDate: dateInput.optional(),
+  returnSlotStart: clockInput.optional(),
+  returnSlotEnd: clockInput.optional(),
   assignedToId: z.string().nullable().optional(),
   notes: z.string().trim().max(500).optional(),
 });
@@ -44,6 +47,7 @@ export const getDeliveryForActor = loadForActor;
 /** Mise à jour d'une livraison par le loueur : le statut de suivi fait avancer les lignes de réservation correspondantes. */
 export async function updateDelivery(actor: Actor & { lenderId: string }, deliveryId: string, input: z.infer<typeof deliveryUpdate>) {
   if (!can(actor, "DELIVERY_UPDATE")) throw forbidden("Votre rôle ne permet pas de mettre à jour les livraisons.");
+  input = deliveryUpdate.parse(input);
   const delivery = await loadForActor(actor, deliveryId);
   if (!["CONFIRMED", "PAID", "READY", "DELIVERING", "DELIVERED", "IN_USE"].includes(delivery.reservation.status) && delivery.reservation.status !== "RETURN_PENDING") {
     throw new AppError("CONFLICT", "Cette réservation n'est pas encore payée ou a été annulée.");
@@ -54,6 +58,18 @@ export async function updateDelivery(actor: Actor & { lenderId: string }, delive
     if (!member && !owner) throw new AppError("VALIDATION_ERROR", "Le responsable doit appartenir à votre entreprise.");
   }
   return transaction(async (tx) => {
+    await lockReservation(tx, delivery.reservationId);
+    const current = await tx.delivery.findUniqueOrThrow({ where: { id: deliveryId } });
+    const reservation = await tx.reservation.findUniqueOrThrow({ where: { id: delivery.reservationId } });
+    if (["DRAFT", "HOLD", "PENDING_PAYMENT", "CANCELLED", "REFUNDED", "COMPLETED"].includes(reservation.status)) throw new AppError("CONFLICT", "Cette réservation ne permet plus de modifier la livraison.");
+    const items = await tx.reservationItem.findMany({ where: { reservationId: delivery.reservationId, lenderId: delivery.lenderId, status: { notIn: ["CANCELLED", "REFUNDED"] } } });
+    if (!items.length) throw new AppError("CONFLICT", "Aucun article actif à livrer.");
+    const first = Math.min(...items.map((i) => i.startDate.getTime()));
+    const last = Math.max(...items.map((i) => i.endDate.getTime()));
+    if ((input.scheduledDate && parseDate(input.scheduledDate).getTime() !== first) || (input.returnDate && parseDate(input.returnDate).getTime() !== last)) throw new AppError("VALIDATION_ERROR", "Pour changer les jours de remise ou de récupération, faites modifier les dates de location afin de revérifier le stock.");
+    for (const [start, end] of [[input.slotStart ?? current.slotStart, input.slotEnd ?? current.slotEnd], [input.returnSlotStart ?? current.returnSlotStart, input.returnSlotEnd ?? current.returnSlotEnd]]) {
+      if (Boolean(start) !== Boolean(end) || (start && end && start >= end)) throw new AppError("VALIDATION_ERROR", "Chaque créneau doit avoir un début et une fin, avec le début avant la fin.");
+    }
     const data: Prisma.DeliveryUpdateInput = {};
     if (input.scheduledDate) data.scheduledDate = parseDate(input.scheduledDate);
     if (input.slotStart) data.slotStart = input.slotStart;
@@ -64,8 +80,8 @@ export async function updateDelivery(actor: Actor & { lenderId: string }, delive
     if (input.notes !== undefined) data.notes = input.notes;
     if (input.assignedToId !== undefined) data.assignedToId = input.assignedToId;
 
-    if (input.status && input.status !== delivery.status) {
-      if (!DELIVERY_FLOW[delivery.status].includes(input.status)) throw new AppError("INVALID_TRANSITION", `Transition de livraison impossible : ${delivery.status} vers ${input.status}.`);
+    if (input.status && input.status !== current.status) {
+      if (!DELIVERY_FLOW[current.status].includes(input.status)) throw new AppError("INVALID_TRANSITION", `Transition de livraison impossible : ${current.status} vers ${input.status}.`);
       data.status = input.status;
       const reservationId = delivery.reservationId;
       const scope = { actorId: actor.userId, lenderId: actor.lenderId };

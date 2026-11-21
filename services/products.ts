@@ -3,11 +3,12 @@ import type { Prisma, ProductStatus } from "@prisma/client";
 import { db, lockProducts, transaction } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
-import { parseDate, todayUTC } from "@/lib/dates";
+import { addDays, parseDate, todayUTC } from "@/lib/dates";
 import { shortCode, slugify } from "@/lib/ids";
 import { getSettings } from "@/lib/settings";
 import { can, type Actor } from "@/lib/auth/actor";
 import { notifyAdmins, notifyLender } from "./notifications";
+import { availabilityForProducts, inventoryEnd, returnBufferDays } from "./availability";
 
 export const productInput = z.object({
   name: z.string().trim().min(3).max(120),
@@ -149,7 +150,9 @@ export async function adjustStock(actor: LenderActor, id: string, input: z.infer
     const next = product.stockQuantity + input.delta;
     if (next < 0) throw new AppError("VALIDATION_ERROR", "Le stock ne peut pas être négatif.");
     const today = todayUTC();
-    const committed = await tx.reservationItem.findMany({ where: { productId: id, status: { in: ["PAID", "CONFIRMED", "READY", "DELIVERING", "DELIVERED", "IN_USE", "RETURN_PENDING", "DISPUTED"] }, endDate: { gt: today } }, select: { quantity: true, startDate: true, endDate: true } });
+    const settings = await getSettings(tx);
+    const rows = await tx.reservationItem.findMany({ where: { productId: id, status: { in: ["PAID", "CONFIRMED", "READY", "DELIVERING", "DELIVERED", "IN_USE", "RETURN_PENDING", "DISPUTED"] }, endDate: { gte: addDays(today, 1 - returnBufferDays(settings)) } }, select: { quantity: true, startDate: true, endDate: true } });
+    const committed = rows.map((i) => ({ ...i, endDate: inventoryEnd(i.endDate, settings) }));
     const peak = committed.reduce((max, c) => Math.max(max, committed.filter((o) => o.startDate < c.endDate && o.endDate > c.startDate).reduce((a, o) => a + o.quantity, 0)), 0);
     if (input.delta < 0 && next < peak) throw new AppError("STOCK_INSUFFICIENT", `Impossible de descendre sous le stock déjà réservé (${peak}).`, { committed: peak });
     const updated = await tx.product.update({ where: { id }, data: { stockQuantity: next } });
@@ -204,17 +207,10 @@ export async function getLenderProduct(lenderId: string, id: string) {
 export async function stockOverview(lenderId: string) {
   const today = todayUTC();
   const products = await db.product.findMany({ where: { lenderId, deletedAt: null }, select: { id: true, name: true, slug: true, stockQuantity: true, status: true } });
-  const [items, holds, blocks] = await Promise.all([
-    db.reservationItem.findMany({ where: { lenderId, status: { in: ["PAID", "CONFIRMED", "READY", "DELIVERING", "DELIVERED", "IN_USE", "RETURN_PENDING", "DISPUTED"] }, startDate: { lte: today }, endDate: { gt: today } }, select: { productId: true, quantity: true } }),
-    db.holdItem.findMany({ where: { product: { lenderId }, startDate: { lte: today }, endDate: { gt: today }, hold: { status: "ACTIVE", expiresAt: { gt: new Date() } } }, select: { productId: true, quantity: true } }),
-    db.availabilityBlock.findMany({ where: { product: { lenderId }, startDate: { lte: today }, endDate: { gt: today } }, select: { productId: true, quantity: true } }),
-  ]);
-  const by = (rows: { productId: string; quantity: number }[], id: string) => rows.filter((r) => r.productId === id).reduce((a, r) => a + r.quantity, 0);
+  const availability = await availabilityForProducts(db, products.map((p) => p.id), today, addDays(today, 1));
   return products.map((p) => {
-    const reserved = by(items, p.id);
-    const held = by(holds, p.id);
-    const blocked = by(blocks, p.id);
-    return { ...p, reserved, held, blocked, available: Math.max(0, p.stockQuantity - reserved - held - blocked) };
+    const d = availability.get(p.id)?.[0];
+    return { ...p, reserved: d?.reserved ?? 0, held: d?.held ?? 0, blocked: d?.blocked ?? 0, available: d?.available ?? 0 };
   });
 }
 
