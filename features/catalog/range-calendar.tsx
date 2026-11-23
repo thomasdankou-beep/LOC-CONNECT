@@ -92,6 +92,8 @@ export function RangeCalendar({ productId, start, end, onChange, onAvailability,
     } else if (free(iso)) onChange(iso, null);
   }
 
+  const oneDayEnd = start ? toISODate(addDays(new Date(`${start}T00:00:00Z`), 1)) : null;
+  const canBookOneDay = Boolean(start && oneDayEnd && !end && minDays <= 1 && allFree(start, oneDayEnd));
   const rangeEnd = end ?? (start && hover && hover > start && allFree(start, hover) ? hover : null);
 
   const monthsList = Array.from({ length: months }, (_, i) => addMonths(view, i));
@@ -103,7 +105,7 @@ export function RangeCalendar({ productId, start, end, onChange, onAvailability,
           <CaretLeft size={18} />
         </button>
         <p className="text-sm text-muted" aria-live="polite">
-          {start && !end ? "Choisissez le jour de retour" : start && end ? "Période sélectionnée" : "Choisissez le jour de début"}
+          {start && !end ? "Choisissez la durée ou le jour de retour" : start && end ? "Période sélectionnée" : "Choisissez le jour de début"}
         </p>
         <button type="button" onClick={() => setView(addMonths(view, 1))} className="flex size-10 items-center justify-center rounded-control border border-line bg-surface hover:bg-surface-2" aria-label="Mois suivant">
           <CaretRight size={18} />
@@ -163,6 +165,19 @@ export function RangeCalendar({ productId, start, end, onChange, onAvailability,
           );
         })}
       </div>
+      {start && oneDayEnd && !end && minDays <= 1 && (
+        <button
+          type="button"
+          disabled={!canBookOneDay}
+          onClick={() => onChange(start, oneDayEnd)}
+          className="mt-3 w-full rounded-control border border-royal px-3 py-2 text-sm font-medium text-royal-ink hover:bg-royal-soft disabled:opacity-40"
+        >
+          Louer 1 journée
+        </button>
+      )}
+      {end && end === oneDayEnd && (
+        <p className="mt-3 text-sm text-muted">1 journée de location · retour le {LONG_FMT.format(new Date(`${end}T00:00:00Z`))}.</p>
+      )}
       {error && <p role="alert" className="mt-3 text-sm text-danger">La disponibilité n&apos;a pas pu être chargée. Elle sera vérifiée au moment de la réservation.</p>}
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted">
         <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-royal" /> Début et retour</span>
