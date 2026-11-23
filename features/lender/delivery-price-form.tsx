@@ -2,16 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { eventDeliveryWindow } from "@/lib/dates";
+import { eventDeliveryWindow, addDays, parseDate, toISODate } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { SLOTS, slotLabel } from "@/lib/slots";
 import { Input, Select } from "@/components/ui/field";
 import { api, ApiError } from "@/lib/api-client";
 
-export function DeliveryPriceForm({ quoteId, outDate, backDate, eventDate, preferredOut, preferredBack }: { quoteId: string; outDate: string; backDate: string; eventDate?: string; preferredOut?: string | null; preferredBack?: string | null }) {
-  const window = eventDate ? eventDeliveryWindow(eventDate) : undefined;
+export function DeliveryPriceForm({ quoteId, outDate, backDate, eventDate, requestedDates, preferredOut, preferredBack }: { quoteId: string; outDate: string; backDate: string; eventDate?: string; requestedDates?: { delivery: string; recovery: string }; preferredOut?: string | null; preferredBack?: string | null }) {
+  const window = requestedDates ? { firstDelivery: toISODate(addDays(parseDate(outDate), -1)), lastDelivery: outDate, firstRecovery: toISODate(addDays(parseDate(backDate), -1)), lastRecovery: backDate } : eventDate ? eventDeliveryWindow(eventDate) : undefined;
   const latestDelivery = window && window.lastDelivery < outDate ? window.lastDelivery : outDate;
-  const earliestRecovery = window && window.firstRecovery > backDate ? window.firstRecovery : backDate;
+  const earliestRecovery = requestedDates ? window?.firstRecovery : window && window.firstRecovery > backDate ? window.firstRecovery : backDate;
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,9 +35,9 @@ export function DeliveryPriceForm({ quoteId, outDate, backDate, eventDate, prefe
   return (
     <form onSubmit={confirm} className="mt-3 space-y-2">
       <Input label="Livraison et récupération (F CFA)" name="amount" type="number" min={0} max={1000000} step={1} required disabled={pending} />
-      <Input label="Jour de livraison" name="deliveryDate" type="date" defaultValue={latestDelivery} min={window?.firstDelivery} max={latestDelivery} required disabled={pending}
+      <Input label="Jour de livraison" name="deliveryDate" type="date" defaultValue={requestedDates?.delivery ?? latestDelivery} min={window?.firstDelivery} max={latestDelivery} required disabled={pending}
         hint="La date doit couvrir le début de la location." />
-      <Input label="Jour de récupération" name="returnDate" type="date" defaultValue={earliestRecovery} min={earliestRecovery} max={window?.lastRecovery} required disabled={pending} />
+      <Input label="Jour de récupération" name="returnDate" type="date" defaultValue={requestedDates?.recovery ?? earliestRecovery} min={earliestRecovery} max={window?.lastRecovery} required disabled={pending} />
       <p className="text-sm text-muted">Les créneaux sont en heure locale du lieu de livraison.</p>
       <div className="grid gap-2 sm:grid-cols-2">
         <Select label="Tranche horaire de livraison" name="deliverySlot" defaultValue={preferredOut ?? ""} required disabled={pending}>

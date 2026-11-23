@@ -6,6 +6,8 @@ import { slotInput } from "./slots";
 export const lenderFulfillmentInput = z.array(z.object({
   lenderId: z.string().min(1),
   mode: z.enum(["PICKUP", "DELIVERY"]),
+  preferredDeliveryDate: z.iso.date().optional(),
+  preferredReturnDate: z.iso.date().optional(),
   deliverySlot: slotInput.optional(),
   returnSlot: slotInput.optional(),
 })).min(1);

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api-client";
+import { addDays, parseDate, toISODate } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Input, Select } from "@/components/ui/field";
@@ -25,7 +26,7 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
   } as const));
   const deliveries = plans.filter((plan) => plan.mode === "DELIVERY");
   const mode = deliveries.length ? "DELIVERY" : "PICKUP";
-  const requiresQuote = deliveries.some((lender) => lender.deliveryOnQuote);
+  const requiresQuote = deliveries.length > 0;
   const estimates = deliveries.map((lender) => ({ ...lender, fee: cityId === lender.cityId ? lender.feeLocal : lender.feeRemote }));
   const total = estimates.reduce((sum, lender) => sum + lender.fee, 0);
 
@@ -49,10 +50,11 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
       lenderFulfillment: plans.map((plan) => ({
         lenderId: plan.lenderId,
         mode: plan.mode,
+        preferredDeliveryDate: plan.mode === "DELIVERY" ? String(fd.get(`date-out-${plan.lenderId}`)) : undefined,
+        preferredReturnDate: plan.mode === "DELIVERY" ? String(fd.get(`date-back-${plan.lenderId}`)) : undefined,
         deliverySlot: String(fd.get(`out-${plan.lenderId}`) ?? "") || undefined,
         returnSlot: String(fd.get(`back-${plan.lenderId}`) ?? "") || undefined,
       })),
-      eventDate: String(fd.get("eventDate") ?? "") || undefined,
       eventName: String(fd.get("eventName") ?? "").trim() || undefined,
     };
     try {
@@ -93,13 +95,25 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
                 </Select>
               )}
               {plan.mode === "PICKUP" && plan.address && <p className="text-sm text-muted">{plan.address}</p>}
-              {plan.mode === "DELIVERY" && plan.deliveryOnQuote && <p className="text-sm text-muted">Le loueur confirme le prix et les créneaux dans la proforma.</p>}
+              {plan.mode === "DELIVERY" && <p className="text-sm text-muted">Le loueur confirme les jours, les créneaux et le prix avant le paiement.</p>}
+              {plan.mode === "DELIVERY" && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Select label="Jour de livraison souhaité" name={`date-out-${plan.lenderId}`} defaultValue={plan.outDate}>
+                    <option value={toISODate(addDays(parseDate(plan.outDate), -1))}>La veille · {day(toISODate(addDays(parseDate(plan.outDate), -1)))}</option>
+                    <option value={plan.outDate}>Premier jour · {day(plan.outDate)}</option>
+                  </Select>
+                  <Select label="Jour de récupération souhaité" name={`date-back-${plan.lenderId}`} defaultValue={plan.backDate}>
+                    <option value={toISODate(addDays(parseDate(plan.backDate), -1))}>Dernier jour · {day(toISODate(addDays(parseDate(plan.backDate), -1)))}</option>
+                    <option value={plan.backDate}>Le lendemain · {day(plan.backDate)}</option>
+                  </Select>
+                </div>
+              )}
               <div key={plan.mode} className="grid gap-3 sm:grid-cols-2">
-                <Select label={`${labels.out} le ${day(plan.outDate)}`} name={`out-${plan.lenderId}`} defaultValue="">
+                <Select label={plan.mode === "DELIVERY" ? "Tranche de livraison souhaitée" : `${labels.out} le ${day(plan.outDate)}`} name={`out-${plan.lenderId}`} defaultValue="">
                   <option value="">À convenir avec le loueur</option>
                   {SLOTS.map((slot) => <option key={slot} value={slot}>{slotLabel(slot)}</option>)}
                 </Select>
-                <Select label={`${labels.back} le ${day(plan.backDate)}`} name={`back-${plan.lenderId}`} defaultValue="">
+                <Select label={plan.mode === "DELIVERY" ? "Tranche de récupération souhaitée" : `${labels.back} le ${day(plan.backDate)}`} name={`back-${plan.lenderId}`} defaultValue="">
                   <option value="">À convenir avec le loueur</option>
                   {SLOTS.map((slot) => <option key={slot} value={slot}>{slotLabel(slot)}</option>)}
                 </Select>
@@ -140,7 +154,6 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
       <fieldset>
         <legend className="text-lg font-semibold text-ink">Contact</legend>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          {requiresQuote && <Input label="Date de l’événement" type="date" name="eventDate" required hint="Livraison dès la veille et récupération au plus tard le lendemain." />}
           <Input label="Événement ou société (facultatif)" name="eventName" maxLength={120} placeholder="Ex : STORY FOAM, mariage Kouadio" hint="Imprimé sur la proforma et les factures." />
           <Input label="Téléphone de contact" name="phone" type="tel" defaultValue={defaults.phone} placeholder="+225 07 00 00 00 00" hint="Utilisé par les loueurs pour la remise ou la livraison." />
         </div>
@@ -172,7 +185,7 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
           Bloquer le stock et passer au paiement
         </Button>}
         <Button type="submit" value="quote" variant="secondary" size="lg" loading={pending === "quote"} disabled={pending !== null} className="w-full sm:w-auto">
-          {requiresQuote ? "Demander le tarif de livraison" : "Obtenir une proforma"}
+          {requiresQuote ? "Demander la confirmation de livraison" : "Obtenir une proforma"}
         </Button>
       </div>
       <p className="text-sm text-muted">Le stock est réservé pour vous pendant quelques minutes, le temps de régler la commande. La proforma chiffre la commande sans bloquer le stock : vous pourrez la payer depuis son lien.</p>

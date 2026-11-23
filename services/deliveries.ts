@@ -66,7 +66,7 @@ export async function updateDelivery(actor: Actor & { lenderId: string }, delive
     if (!items.length) throw new AppError("CONFLICT", "Aucun article actif à livrer.");
     const first = Math.min(...items.map((i) => i.startDate.getTime()));
     const last = Math.max(...items.map((i) => i.endDate.getTime()));
-    if ((input.scheduledDate && parseDate(input.scheduledDate).getTime() !== first) || (input.returnDate && parseDate(input.returnDate).getTime() !== last)) throw new AppError("VALIDATION_ERROR", "Pour changer les jours de remise ou de récupération, faites modifier les dates de location afin de revérifier le stock.");
+    if ((input.scheduledDate && parseDate(input.scheduledDate).getTime() !== first) || (input.returnDate && parseDate(input.returnDate).getTime() !== (current.returnDate?.getTime() ?? last))) throw new AppError("VALIDATION_ERROR", "Pour changer les jours de remise ou de récupération, faites modifier les dates de location afin de revérifier le stock.");
     for (const [start, end] of [[input.slotStart ?? current.slotStart, input.slotEnd ?? current.slotEnd], [input.returnSlotStart ?? current.returnSlotStart, input.returnSlotEnd ?? current.returnSlotEnd]]) {
       if (Boolean(start) !== Boolean(end) || (start && end && start >= end)) throw new AppError("VALIDATION_ERROR", "Chaque créneau doit avoir un début et une fin, avec le début avant la fin.");
     }

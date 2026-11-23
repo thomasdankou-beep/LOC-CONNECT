@@ -39,6 +39,31 @@ async function payHold(client: Awaited<ReturnType<typeof makeClient>>, holdId: s
 }
 
 describe("proforma", () => {
+  it("demande la confirmation des jours souhaités et permet la récupération le dernier jour facturé", async () => {
+    const { l, client, input } = await cartWithCounters();
+    const quote = await createQuote(client.user.id, {
+      ...input,
+      eventDate: undefined,
+      lenderFulfillment: [{
+        lenderId: l.lender.id, mode: "DELIVERY",
+        preferredDeliveryDate: day(10), preferredReturnDate: day(10),
+      }],
+    });
+    expect((await getQuoteForActor(client.actor, quote.id)).data.groups[0].requestedDates)
+      .toEqual({ delivery: day(10), recovery: day(10) });
+    await expect(payQuote(client.user.id, quote.id, { accept: true })).rejects.toMatchObject({ code: "CONFLICT" });
+    await confirmDeliveryPrice(l.actor, quote.id, {
+      amount: 15_000, deliveryDate: day(10), returnDate: day(10),
+      deliverySlot: "10:00-12:00", returnSlot: "18:00-20:00",
+    });
+    const ready = await getQuoteForActor(client.actor, quote.id);
+    expect(ready.data.groups[0].schedule?.backDate).toBe(day(10));
+    const hold = await payQuote(client.user.id, quote.id, { accept: true });
+    const reservation = await payHold(client, hold.id);
+    expect(reservation.deliveries[0].returnDate?.toISOString().slice(0, 10)).toBe(day(10));
+    expect(reservation.subtotal).toBe(ready.data.totals.rental);
+  });
+
   it("attend le tarif de chaque loueur et conserve les tarifs confirmés au paiement", async () => {
     const { l, client, input } = await cartWithCounters();
     const second = await makeLender(base.city.id, { name: "Vaisselle" });
