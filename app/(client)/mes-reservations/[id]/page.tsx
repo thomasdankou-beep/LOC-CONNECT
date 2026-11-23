@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireClient } from "@/lib/auth/actor";
 import { AppError } from "@/lib/errors";
 import { slotSummary } from "@/lib/slots";
-import { formatDate, formatDateTime } from "@/lib/dates";
+import { formatDate, formatRentalPeriod, formatDateTime } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { CANCELLABLE_STATUSES, DISPUTABLE_STATUSES } from "@/lib/state-machine";
 import { DELIVERY_STATUS, DEPOSIT_STATUS, EXTRA_CHARGE_STATUS, FULFILLMENT, MODIFICATION_STATUS, PAYMENT_METHOD, PAYMENT_STATUS, REFUND_STATUS, RESERVATION_STATUS, RETURN_CONDITION, RETURN_REPORT_STATUS, DISPUTE_STATUS, PAYMENT_MODE } from "@/lib/labels";
@@ -104,7 +104,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
                               <h3 className="font-semibold text-ink"><Link href={`/produits/${i.product.slug}`} className="hover:underline">{i.quantity} x {i.productName}</Link></h3>
                               <StatusBadge entry={RESERVATION_STATUS[i.status]} />
                             </div>
-                            <p className="mt-1 text-sm text-muted">Du {formatDate(i.startDate)} au {formatDate(i.endDate)} ({i.days} jour{i.days > 1 ? "s" : ""}) · {formatFcfa(i.unitPrice)} par jour</p>
+                            <p className="mt-1 text-sm text-muted">{formatRentalPeriod(i.startDate, i.endDate)} · {formatFcfa(i.unitPrice)} par jour</p>
                             <p className="mt-0.5 text-sm font-medium tabular-nums text-ink">{formatFcfa(i.subtotal)}{i.cashDue > 0 && <span className="font-normal text-muted"> · acompte en ligne {formatFcfa(i.subtotal - i.cashDue)}, solde en espèces {formatFcfa(i.cashDue)}</span>}</p>
                             <p className="mt-1 text-sm text-royal-ink">{nextActionForClient(i.status, { fulfillment: plan.mode, extraChargePending: pendingExtra.length > 0, contestable: report?.status === "SUBMITTED" && Boolean(report.contestDeadline && report.contestDeadline > new Date()) })}</p>
 
@@ -164,7 +164,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
                   <div className="border-t border-line bg-surface-2/40 px-5 py-4 text-sm">
                     <p className="font-medium">Retrait et retour au dépôt</p>
                     {lender.address && <p className="mt-1 text-muted">{lender.address}</p>}
-                    <p className="mt-1 text-muted">Retrait le {formatDate(new Date(Math.min(...items.map((item) => item.startDate.getTime()))))} · retour le {formatDate(new Date(Math.max(...items.map((item) => item.endDate.getTime()))))}</p>
+                    <p className="mt-1 text-muted">Retrait le {formatDate(new Date(plan.confirmedPickupDate ?? Math.min(...items.map((item) => item.startDate.getTime()))))} · retour le {formatDate(new Date(plan.confirmedDepotReturnDate ?? Math.max(...items.map((item) => item.endDate.getTime()))))}</p>
                     <p className="mt-1 text-muted">{slotSummary(plan.mode, plan.deliverySlot ?? null, plan.returnSlot ?? null) ?? "Créneaux à convenir avec le loueur"}</p>
                   </div>
                 )}

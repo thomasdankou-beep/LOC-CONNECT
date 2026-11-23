@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, newIdempotencyKey } from "@/lib/api-client";
 import { formatFcfa } from "@/lib/money";
-import { formatDate } from "@/lib/dates";
+import { formatRentalPeriod } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Notice, Skeleton } from "@/components/ui/states";
@@ -208,7 +208,7 @@ export function PaymentPanel({ holdId, secondsLeft }: { holdId: string; secondsL
                 <ul className="mt-1 space-y-1 text-sm">
                   {g.items.map((i) => (
                     <li key={i.id} className="flex justify-between gap-3 text-muted">
-                      <span className="min-w-0 truncate">{i.quantity} x {i.productName}<span className="block text-xs">{formatDate(i.startDate)} au {formatDate(i.endDate)}</span></span>
+                      <span className="min-w-0 truncate">{i.quantity} x {i.productName}<span className="block text-xs">{formatRentalPeriod(i.startDate, i.endDate)}</span></span>
                       <span className="shrink-0 tabular-nums text-ink">{formatFcfa(i.subtotal)}</span>
                     </li>
                   ))}

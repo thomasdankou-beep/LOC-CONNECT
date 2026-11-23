@@ -39,6 +39,32 @@ async function payHold(client: Awaited<ReturnType<typeof makeClient>>, holdId: s
 }
 
 describe("proforma", () => {
+  it("confirme le retrait et le retour au dépôt avant paiement", async () => {
+    const { l, client } = await cartWithCounters();
+    const quote = await createQuote(client.user.id, {
+      fulfillmentType: "PICKUP",
+      lenderFulfillment: [{
+        lenderId: l.lender.id, mode: "PICKUP",
+        preferredDeliveryDate: day(10), preferredReturnDate: day(10),
+      }],
+    });
+    await expect(payQuote(client.user.id, quote.id, { accept: true })).rejects.toMatchObject({ code: "CONFLICT" });
+    const confirmation = {
+      deliveryDate: day(10), returnDate: day(10),
+      deliverySlot: "10:00-12:00", returnSlot: "18:00-20:00",
+    } as const;
+    await expect(confirmDeliveryPrice(l.actor, quote.id, { ...confirmation, amount: 500 }))
+      .rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await confirmDeliveryPrice(l.actor, quote.id, { ...confirmation, amount: 0 });
+    const hold = await payQuote(client.user.id, quote.id, { accept: true });
+    const reservation = await payHold(client, hold.id);
+    expect(reservation.deliveries).toHaveLength(0);
+    expect(reservation.deliveryFee).toBe(0);
+    expect(reservation.lenderFulfillment).toEqual([expect.objectContaining({
+      confirmedPickupDate: day(10), confirmedDepotReturnDate: day(10),
+    })]);
+  });
+
   it("demande la confirmation des jours souhaités et permet la récupération le dernier jour facturé", async () => {
     const { l, client, input } = await cartWithCounters();
     const quote = await createQuote(client.user.id, {

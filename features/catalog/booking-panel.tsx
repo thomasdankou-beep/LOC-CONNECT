@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api-client";
-import { addDays, daysBetween, parseDate } from "@/lib/dates";
+import { addDays, daysBetween, formatRentalPeriod, parseDate } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -65,7 +65,7 @@ export function BookingPanel({ productId, returnBufferDays, unitPrice, deposit, 
       router.push(`/connexion?next=${encodeURIComponent(location.pathname + location.search)}`);
       return;
     }
-    if (!start || !end) return setError("Choisissez les dates de début et de retour.");
+    if (!start || !end) return setError("Sélectionnez le ou les jours de location.");
     if (tooLong) return setError(`La durée maximale est de ${maxDays} jours.`);
     if (qty > maxQty) return setError(`Seulement ${maxQty} disponible${maxQty > 1 ? "s" : ""} sur cette période.`);
     setBusy(go ? "now" : "cart");
@@ -91,7 +91,13 @@ export function BookingPanel({ productId, returnBufferDays, unitPrice, deposit, 
       </p>
 
       <div className="mt-5">
-        <RangeCalendar productId={productId} start={start} end={end} minDays={minDays} returnBufferDays={returnBufferDays} months={1} onChange={(s, e) => { setStart(s); setEnd(e); setError(null); }} onAvailability={setAvail} />
+        <RangeCalendar productId={productId} start={start} end={end} minDays={minDays} maxDays={maxDays} returnBufferDays={returnBufferDays} months={1} onChange={(s, e) => { setStart(s); setEnd(e); setError(null); }} onAvailability={setAvail} />
+        {start && end && (
+          <div className="mt-4 text-sm" aria-live="polite">
+            <p className="font-medium text-ink">{formatRentalPeriod(start, end)}</p>
+            <p className="text-muted">Le jour et le créneau de retour seront confirmés par le loueur.</p>
+          </div>
+        )}
       </div>
 
       <div className="mt-5 flex items-center justify-between rounded-control border border-line px-3 py-2">

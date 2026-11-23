@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { api } from "@/lib/api-client";
-import { addDays, toISODate, todayUTC } from "@/lib/dates";
+import { addDays, daysBetween, parseDate, toISODate, todayUTC } from "@/lib/dates";
 import { CaretLeft, CaretRight } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 
@@ -22,15 +22,20 @@ type Props = {
   onChange: (start: string | null, end: string | null) => void;
   onAvailability?: (map: Record<string, DayInfo>) => void;
   minDays?: number;
+  maxDays?: number | null;
   returnBufferDays?: number;
   months?: 1 | 2;
 };
 
 /**
  * Calendrier de sélection d'une période de location. La disponibilité jour par jour vient du serveur
- * (stock moins réservations, HOLD actifs et indisponibilités du loueur). Le jour de fin est le jour de retour : il n'est pas facturé.
+ * (stock moins réservations, HOLD actifs et indisponibilités du loueur). La date de fin envoyée au panier est exclusive.
  */
-export function RangeCalendar({ productId, start, end, onChange, onAvailability, minDays = 1, returnBufferDays = 1, months = 2 }: Props) {
+export function RangeCalendar({ productId, start, end, onChange, onAvailability, minDays = 1, maxDays = null, returnBufferDays = 1, months = 2 }: Props) {
+  const modeId = useId();
+  const [mode, setMode] = useState<"single" | "range">(() =>
+    minDays > 1 || (start && end && daysBetween(parseDate(start), parseDate(end)) > 1) ? "range" : "single",
+  );
   const today = useMemo(() => todayUTC(), []);
   const [view, setView] = useState(() => monthStart(start ? new Date(`${start}T00:00:00Z`) : today));
   const [days, setDays] = useState<Record<string, DayInfo>>({});
@@ -75,37 +80,59 @@ export function RangeCalendar({ productId, start, end, onChange, onAvailability,
     return true;
   }
 
-  function pick(iso: string) {
-    if (iso < todayIso) return;
-    if (!start || (start && end)) {
-      if (free(iso)) onChange(iso, null);
-      return;
-    }
-    if (iso <= start) {
-      if (free(iso)) onChange(iso, null);
-      return;
-    }
-    if (allFree(start, iso)) {
-      const nights = Math.round((new Date(`${iso}T00:00:00Z`).getTime() - new Date(`${start}T00:00:00Z`).getTime()) / 86_400_000);
-      if (nights < minDays) return;
-      onChange(start, iso);
-    } else if (free(iso)) onChange(iso, null);
+  function changeMode(next: "single" | "range") {
+    setMode(next);
+    setHover(null);
+    onChange(null, null);
   }
 
-  const oneDayEnd = start ? toISODate(addDays(new Date(`${start}T00:00:00Z`), 1)) : null;
-  const canBookOneDay = Boolean(start && oneDayEnd && !end && minDays <= 1 && allFree(start, oneDayEnd));
-  const rangeEnd = end ?? (start && hover && hover > start && allFree(start, hover) ? hover : null);
+  function canEndOn(iso: string) {
+    if (!start || iso <= start) return false;
+    const exclusiveEnd = addDays(parseDate(iso), 1);
+    return daysBetween(parseDate(start), exclusiveEnd) >= Math.max(2, minDays) && allFree(start, toISODate(exclusiveEnd));
+  }
+
+  function pick(iso: string) {
+    if (iso < todayIso || !free(iso)) return;
+    if (mode === "single") {
+      const exclusiveEnd = toISODate(addDays(parseDate(iso), 1));
+      if (allFree(iso, exclusiveEnd)) onChange(iso, exclusiveEnd);
+      return;
+    }
+    if (!start || end || iso <= start || !allFree(start, toISODate(addDays(parseDate(iso), 1)))) {
+      onChange(iso, null);
+      return;
+    }
+    if (canEndOn(iso)) onChange(start, toISODate(addDays(parseDate(iso), 1)));
+  }
+
+  const lastDay = end ? toISODate(addDays(parseDate(end), -1)) : null;
+  const rangeEnd = lastDay ?? (mode === "range" && hover && canEndOn(hover) ? hover : null);
 
   const monthsList = Array.from({ length: months }, (_, i) => addMonths(view, i));
 
   return (
     <div>
+      <fieldset className="mb-4">
+        <legend className="mb-2 text-sm font-medium text-ink">Durée de location</legend>
+        <div className="flex flex-wrap gap-2">
+          <label className="flex items-center gap-2 rounded-control border border-line px-3 py-2 text-sm has-[:checked]:border-royal has-[:disabled]:opacity-50">
+            <input type="radio" name={modeId} checked={mode === "single"} disabled={minDays > 1} onChange={() => changeMode("single")} />
+            Une journée
+          </label>
+          <label className="flex items-center gap-2 rounded-control border border-line px-3 py-2 text-sm has-[:checked]:border-royal has-[:disabled]:opacity-50">
+            <input type="radio" name={modeId} checked={mode === "range"} disabled={maxDays === 1} onChange={() => changeMode("range")} />
+            Plusieurs jours
+          </label>
+        </div>
+        {minDays > 1 && <p className="mt-2 text-xs text-muted">Location de {minDays} jours minimum.</p>}
+      </fieldset>
       <div className="mb-3 flex items-center justify-between">
         <button type="button" onClick={() => setView(addMonths(view, -1))} disabled={view <= monthStart(today)} className="flex size-10 items-center justify-center rounded-control border border-line bg-surface hover:bg-surface-2 disabled:opacity-40" aria-label="Mois précédent">
           <CaretLeft size={18} />
         </button>
         <p className="text-sm text-muted" aria-live="polite">
-          {start && !end ? "Choisissez la durée ou le jour de retour" : start && end ? "Période sélectionnée" : "Choisissez le jour de début"}
+          {end ? "Dates sélectionnées" : mode === "single" ? "Choisissez le jour de location" : start ? "Choisissez le dernier jour de location" : "Choisissez le premier jour de location"}
         </p>
         <button type="button" onClick={() => setView(addMonths(view, 1))} className="flex size-10 items-center justify-center rounded-control border border-line bg-surface hover:bg-surface-2" aria-label="Mois suivant">
           <CaretRight size={18} />
@@ -134,11 +161,13 @@ export function RangeCalendar({ productId, start, end, onChange, onAvailability,
                   const iso = toISODate(d);
                   const past = iso < todayIso;
                   const info = days[iso];
-                  const unavailable = !past && info && info.available <= 0;
+                  const unavailable = !past && (mode === "single"
+                    ? !allFree(iso, toISODate(addDays(d, 1)))
+                    : !free(iso));
                   const isStart = iso === start;
-                  const isEnd = iso === end;
-                  const inRange = start && rangeEnd ? iso > start && iso < rangeEnd : false;
-                  const disabled = past || (unavailable && !(start && !end && iso > start));
+                  const isEnd = iso === lastDay;
+                  const inRange = start && rangeEnd ? iso > start && iso <= rangeEnd && !isEnd : false;
+                  const disabled = past || unavailable;
                   return (
                     <button
                       key={iso}
@@ -165,23 +194,10 @@ export function RangeCalendar({ productId, start, end, onChange, onAvailability,
           );
         })}
       </div>
-      {start && oneDayEnd && !end && minDays <= 1 && (
-        <button
-          type="button"
-          disabled={!canBookOneDay}
-          onClick={() => onChange(start, oneDayEnd)}
-          className="mt-3 w-full rounded-control border border-royal px-3 py-2 text-sm font-medium text-royal-ink hover:bg-royal-soft disabled:opacity-40"
-        >
-          Louer 1 journée
-        </button>
-      )}
-      {end && end === oneDayEnd && (
-        <p className="mt-3 text-sm text-muted">1 journée de location · retour le {LONG_FMT.format(new Date(`${end}T00:00:00Z`))}.</p>
-      )}
       {error && <p role="alert" className="mt-3 text-sm text-danger">La disponibilité n&apos;a pas pu être chargée. Elle sera vérifiée au moment de la réservation.</p>}
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted">
-        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-royal" /> Début et retour</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-royal-soft" /> Période louée</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-royal" /> Jour choisi ou bornes de la période</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-royal-soft" /> Jours entre les deux dates</span>
         <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-surface-2" /> <span className="line-through">Indisponible</span></span>
       </div>
     </div>
