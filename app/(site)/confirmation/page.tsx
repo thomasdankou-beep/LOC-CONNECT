@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getActor } from "@/lib/auth/actor";
-import { formatDate } from "@/lib/dates";
+import { formatRentalPeriod } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { getReservationDetail } from "@/services/reservations";
 import { RESERVATION_STATUS } from "@/lib/labels";
@@ -48,7 +48,7 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
             <li key={i.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
               <div>
                 <p className="font-medium text-ink">{i.quantity} x {i.productName}</p>
-                <p className="text-sm text-muted">{i.lender.companyName} · du {formatDate(i.startDate)} au {formatDate(i.endDate)}</p>
+                <p className="text-sm text-muted">{i.lender.companyName} · {formatRentalPeriod(i.startDate, i.endDate)}</p>
                 <p className="text-sm text-muted">Caution : {formatFcfa(i.depositAmount)}</p>
               </div>
               <p className="font-medium tabular-nums text-ink">{formatFcfa(i.subtotal)}</p>

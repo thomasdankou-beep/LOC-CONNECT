@@ -176,7 +176,11 @@ export async function issueRentalInvoices(tx: Tx, reservationId: string, payment
       data: {
         ...base,
         title: INVOICE_TITLE.RENTAL,
-        schedule: scheduleOf(mine, plan.deliverySlot ?? null, plan.returnSlot ?? null, delivery),
+        schedule: {
+          ...scheduleOf(mine, plan.deliverySlot ?? null, plan.returnSlot ?? null, delivery),
+          ...(plan.confirmedPickupDate ? { outDate: plan.confirmedPickupDate } : {}),
+          ...(plan.confirmedDepotReturnDate ? { backDate: plan.confirmedDepotReturnDate } : {}),
+        },
         terms: readTermsSnapshot(reservation.termsSnapshot)?.find((t) => t.lenderId === lenderId)?.terms ?? null,
         acceptedAt: reservation.termsAcceptedAt?.toISOString() ?? null,
         lines,

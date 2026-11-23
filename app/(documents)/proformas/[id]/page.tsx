@@ -30,7 +30,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <p>Cette demande a expiré. Vous pouvez demander un nouveau tarif depuis votre panier.</p>
         ) : (
           <>
-            <p>Tarifs de livraison attendus de {pendingLenders.map((group) => group.seller.name).join(", ")}.</p>
+            <p>Confirmation des créneaux attendue de {pendingLenders.map((group) => group.seller.name).join(", ")}.</p>
             <p>Le client recevra une notification dès que la proforma sera prête à être validée.</p>
           </>
         )}

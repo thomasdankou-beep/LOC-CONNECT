@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireClient } from "@/lib/auth/actor";
-import { formatDate, formatDateTime, todayUTC } from "@/lib/dates";
+import { formatDate, formatRentalPeriod, formatDateTime, todayUTC } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { RESERVATION_STATUS } from "@/lib/labels";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
@@ -76,7 +76,7 @@ export default async function ClientDashboard() {
                   <Link href={`/mes-reservations/${i.reservation.id}`} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 transition hover:bg-surface-2/50">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-ink">{i.quantity} x {i.productName}</p>
-                      <p className="text-sm text-muted">{i.lender.companyName} · {formatDate(i.startDate)} au {formatDate(i.endDate)}</p>
+                      <p className="text-sm text-muted">{i.lender.companyName} · {formatRentalPeriod(i.startDate, i.endDate)}</p>
                       <p className="mt-0.5 text-sm text-royal-ink">{nextActionForClient(i.status, { fulfillment: fulfillmentFor(i.reservation, i.lenderId).mode })}</p>
                     </div>
                     <StatusBadge entry={RESERVATION_STATUS[i.status]} />

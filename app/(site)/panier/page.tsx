@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getActor } from "@/lib/auth/actor";
-import { formatDate, parseDate } from "@/lib/dates";
+import { formatRentalPeriod } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { getCart } from "@/services/cart";
 import { Card } from "@/components/ui/card";
@@ -41,7 +41,6 @@ export default async function CartPage() {
     );
   }
 
-  const days = (a: string, b: string) => Math.round((parseDate(b).getTime() - parseDate(a).getTime()) / 86_400_000);
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-4 pt-10 sm:px-6">
@@ -74,7 +73,7 @@ export default async function CartPage() {
                         <p className="text-base font-semibold tabular-nums text-ink">{formatFcfa(l.subtotal)}</p>
                       </div>
                       <p className="mt-1 text-sm text-muted">
-                        Du {formatDate(l.startDate)} au {formatDate(l.endDate)} ({days(l.startDate, l.endDate)} jour{days(l.startDate, l.endDate) > 1 ? "s" : ""}) · {formatFcfa(l.unitPrice)} par jour
+                        {formatRentalPeriod(l.startDate, l.endDate)} · {formatFcfa(l.unitPrice)} par jour
                       </p>
                       <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted"><ShieldCheck size={14} /> Caution {formatFcfa(l.deposit)}</p>
                       {!l.ok && (

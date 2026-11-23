@@ -7,7 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { pageLender } from "@/lib/auth/page";
 import { AppError } from "@/lib/errors";
 import { slotSummary } from "@/lib/slots";
-import { formatDate, formatDateTime, todayUTC } from "@/lib/dates";
+import { formatDate, formatRentalPeriod, formatDateTime, todayUTC } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { DELIVERY_STATUS, DEPOSIT_STATUS, DISPUTE_STATUS, FULFILLMENT, MODIFICATION_STATUS, RESERVATION_STATUS, RETURN_CONDITION, RETURN_REPORT_STATUS } from "@/lib/labels";
 import { getReservationDetail } from "@/services/reservations";
@@ -62,6 +62,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <StatusBadge entry={RESERVATION_STATUS[r.status]} />
           </div>
           <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {r.eventName ? `${r.eventName} · ` : ""}{FULFILLMENT[plan.mode]}{slotSummary(plan.mode, plan.deliverySlot ?? null, plan.returnSlot ?? null) ? ` (${slotSummary(plan.mode, plan.deliverySlot ?? null, plan.returnSlot ?? null)})` : ""}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
+          {plan.confirmedPickupDate && plan.confirmedDepotReturnDate && (
+            <p className="mt-1 text-sm text-muted">
+              Retrait le {formatDate(new Date(plan.confirmedPickupDate))} · retour au dépôt le {formatDate(new Date(plan.confirmedDepotReturnDate))}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {groups.map((g) => {
@@ -122,7 +127,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                           <h3 className="font-semibold text-ink">{i.quantity} x {i.productName}</h3>
                           <StatusBadge entry={RESERVATION_STATUS[i.status]} />
                         </div>
-                        <p className="mt-1 text-sm text-muted">Du {formatDate(i.startDate)} au {formatDate(i.endDate)} ({i.days} jour{i.days > 1 ? "s" : ""}) · {formatFcfa(i.unitPrice)} par jour</p>
+                        <p className="mt-1 text-sm text-muted">{formatRentalPeriod(i.startDate, i.endDate)} · {formatFcfa(i.unitPrice)} par jour</p>
                         <p className="mt-0.5 text-sm text-ink"><span className="font-medium tabular-nums">{formatFcfa(i.subtotal)}</span> <span className="text-muted">dont commission {formatFcfa(i.commission)}</span></p>
                         {i.deposit && (
                           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-control bg-surface-2/60 px-3 py-2 text-sm">

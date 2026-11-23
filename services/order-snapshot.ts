@@ -48,6 +48,6 @@ export function quoteDelivery(data: unknown): QuotedDelivery | undefined {
 
 export function quoteDeliveryFees(data: unknown): Map<string, number> {
   const approval = quoteDelivery(data);
-  if (approval?.pendingLenderIds.length) throw new AppError("CONFLICT", "Le tarif de livraison doit encore être confirmé par les loueurs.");
+  if (approval?.pendingLenderIds.length) throw new AppError("CONFLICT", "Les dates, les créneaux et les éventuels frais de livraison doivent encore être confirmés par les loueurs.");
   return new Map(approval?.approvedFees);
 }

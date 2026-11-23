@@ -73,3 +73,13 @@ const FR_DATE_TIME = new Intl.DateTimeFormat("fr-FR", {
 
 export const formatDate = (d: Date | string) => FR_DATE.format(typeof d === "string" ? new Date(d) : d);
 export const formatDateTime = (d: Date | string) => FR_DATE_TIME.format(typeof d === "string" ? new Date(d) : d);
+
+/** Libellé de la période facturée à partir de la date de fin exclusive. */
+export function formatRentalPeriod(start: Date | string, end: Date | string): string {
+  const first = typeof start === "string" ? new Date(start) : start;
+  const exclusiveEnd = typeof end === "string" ? new Date(end) : end;
+  const days = daysBetween(first, exclusiveEnd);
+  return days <= 1
+    ? `Le ${formatDate(first)} · 1 jour facturé`
+    : `Du ${formatDate(first)} au ${formatDate(addDays(exclusiveEnd, -1))} inclus · ${days} jours facturés`;
+}

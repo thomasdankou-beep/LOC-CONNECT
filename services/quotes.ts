@@ -82,7 +82,7 @@ export function quoteStatus(quote: Pick<Quote, "validUntil"> & Partial<Pick<Quot
 }
 
 export const QUOTE_STATUS: Record<QuoteStatus, { label: string; tone: "success" | "warning" | "neutral" }> = {
-  AWAITING_DELIVERY: { label: "Tarifs de livraison en attente", tone: "warning" },
+  AWAITING_DELIVERY: { label: "Confirmation des créneaux en attente", tone: "warning" },
   OPEN: { label: "À payer", tone: "warning" },
   PAID: { label: "Payée", tone: "success" },
   EXPIRED: { label: "Expirée", tone: "neutral" },
@@ -119,13 +119,16 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
     const lender = mine[0].product.lender;
     const plan = fulfillmentFor(input, lender.id);
     const selection = input.lenderFulfillment?.find((entry) => entry.lenderId === lender.id);
+    if (selection?.confirmedPickupDate || selection?.confirmedDepotReturnDate) {
+      throw new AppError("VALIDATION_ERROR", "Les dates confirmées sont renseignées par le loueur.");
+    }
     let requestedDates: QuoteGroup["requestedDates"];
     if (selection?.preferredDeliveryDate || selection?.preferredReturnDate) {
       const { preferredDeliveryDate, preferredReturnDate } = selection;
       const schedule = scheduleOf(mine, null, null);
       const previousDay = toISODate(addDays(parseDate(schedule.outDate), -1));
       const lastDay = toISODate(addDays(parseDate(schedule.backDate), -1));
-      if (plan.mode !== "DELIVERY" || !preferredDeliveryDate || !preferredReturnDate
+      if (!preferredDeliveryDate || !preferredReturnDate
         || ![previousDay, schedule.outDate].includes(preferredDeliveryDate)
         || ![lastDay, schedule.backDate].includes(preferredReturnDate)
         || preferredDeliveryDate < toISODate(now)) {
@@ -155,9 +158,10 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
 
   const validUntil = addDays(now, settings["quote.validity_days"]);
   const netToPay = totals.subtotal + totals.deliveryFee + totals.depositTotal;
-  const pendingLenderIds = input.fulfillmentType === "DELIVERY"
-    ? [...new Set(items.filter((i) => (i.product.lender.deliveryOnQuote || groups.some((g) => g.lenderId === i.product.lenderId && g.requestedDates)) && fulfillmentFor(input, i.product.lenderId).mode === "DELIVERY").map((i) => i.product.lenderId))]
-    : [];
+  const pendingLenderIds = groups.filter((group) => group.requestedDates
+    || (group.fulfillment !== "PICKUP" && input.fulfillmentType === "DELIVERY"
+      && items.some((item) => item.product.lenderId === group.lenderId && item.product.lender.deliveryOnQuote)))
+    .map((group) => group.lenderId);
   const legacyPending = pendingLenderIds.filter((id) => !groups.some((g) => g.lenderId === id && g.requestedDates));
   if (legacyPending.length) {
     if (!input.eventDate) throw new AppError("VALIDATION_ERROR", "Indiquez la date de l’événement pour demander un devis de livraison.");
@@ -205,8 +209,8 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
     for (const lenderId of pendingLenderIds) {
       await notifyLender(tx, lenderId, {
         type: "quote.delivery_requested",
-        title: "Tarif de livraison à confirmer",
-        body: `Renseignez le prix de livraison et de récupération pour la demande ${quote.number}.`,
+        title: "Jours et créneaux à confirmer",
+        body: `Confirmez les jours et créneaux pour la demande ${quote.number}.`,
         link: "/loueur/livraisons",
       }, "DELIVERY_UPDATE");
     }
@@ -282,7 +286,6 @@ type DeliveryActor = Actor & { lenderId: string };
 
 function pendingDeliveryWhere(lenderId: string): Prisma.QuoteWhereInput {
   return {
-    fulfillmentType: "DELIVERY",
     acceptedAt: null,
     validUntil: { gt: new Date() },
     data: { path: ["deliveryApproval", "pendingLenderIds"], array_contains: [lenderId] },
@@ -321,6 +324,8 @@ export async function confirmDeliveryPrice(actor: DeliveryActor, quoteId: string
     const data = quote.data as unknown as QuoteData;
     const approval = data.deliveryApproval!;
     approval.pendingLenderIds = approval.pendingLenderIds.filter((id) => id !== actor.lenderId);
+    const pickup = fulfillmentFor(quote, actor.lenderId).mode === "PICKUP";
+    if (pickup && amount !== 0) throw new AppError("VALIDATION_ERROR", "Aucun frais de livraison ne peut être ajouté à un retrait au dépôt.");
     approval.approvedFees.push([actor.lenderId, amount]);
 
     // Verify the original basket before applying the confirmed transport prices.
@@ -331,6 +336,8 @@ export async function confirmDeliveryPrice(actor: DeliveryActor, quoteId: string
       const plan = fulfillmentFor(quote, group.lenderId);
       return {
         lenderId: group.lenderId, mode: plan.mode,
+        confirmedPickupDate: pickup && group.lenderId === actor.lenderId ? deliveryDate : plan.confirmedPickupDate,
+        confirmedDepotReturnDate: pickup && group.lenderId === actor.lenderId ? returnDate : plan.confirmedDepotReturnDate,
         deliverySlot: group.lenderId === actor.lenderId ? deliverySlot : (plan.deliverySlot ?? undefined) as Slot | undefined,
         returnSlot: group.lenderId === actor.lenderId ? returnSlot : (plan.returnSlot ?? undefined) as Slot | undefined,
       };
@@ -418,7 +425,7 @@ export async function confirmDeliveryPrice(actor: DeliveryActor, quoteId: string
       await notifyUsers(tx, [quote.clientId], {
         type: "quote.delivery_confirmed",
         title: "Votre proforma est prête",
-        body: `Les tarifs de livraison ont été confirmés pour la proforma ${quote.number}. Vous pouvez vérifier les montants et passer au paiement.`,
+        body: `Les dates, créneaux et tarifs applicables ont été confirmés pour la proforma ${quote.number}. Vous pouvez vérifier les montants et passer au paiement.`,
         link: `/proformas/${quote.id}`,
       });
     }

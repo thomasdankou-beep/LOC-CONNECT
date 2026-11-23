@@ -6,40 +6,31 @@ import { api, ApiError } from "@/lib/api-client";
 import { addDays, parseDate, toISODate } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { Button } from "@/components/ui/button";
-import { Checkbox, Input, Select } from "@/components/ui/field";
+import { Input, Select } from "@/components/ui/field";
 import { Notice } from "@/components/ui/states";
 import { SCHEDULE_LABELS, SLOTS, slotLabel } from "@/lib/slots";
 
 type LenderTerms = { lenderId: string; name: string; address: string | null; outDate: string; backDate: string; cityId: string; offersDelivery: boolean; deliveryOnQuote: boolean; feeLocal: number; feeRemote: number; terms: string | null; deliveryRequired: boolean };
 type City = { id: string; name: string };
 
-export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { lenders: LenderTerms[]; cities: City[]; defaults: { address: string; cityId: string; phone: string }; termsVersion: string }) {
+export function FulfillmentForm({ lenders, cities, defaults }: { lenders: LenderTerms[]; cities: City[]; defaults: { address: string; cityId: string; phone: string } }) {
   const router = useRouter();
   const [choices, setChoices] = useState<Record<string, "PICKUP" | "DELIVERY">>({});
   const [cityId, setCityId] = useState(defaults.cityId);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState<"pay" | "quote" | null>(null);
-  const [accepted, setAccepted] = useState(false);
+  const [pending, setPending] = useState(false);
   const plans = lenders.map((lender) => ({
     ...lender,
     mode: choices[lender.lenderId] ?? (lender.deliveryRequired ? "DELIVERY" : "PICKUP"),
   } as const));
   const deliveries = plans.filter((plan) => plan.mode === "DELIVERY");
   const mode = deliveries.length ? "DELIVERY" : "PICKUP";
-  const requiresQuote = deliveries.length > 0;
   const estimates = deliveries.map((lender) => ({ ...lender, fee: cityId === lender.cityId ? lender.feeLocal : lender.feeRemote }));
-  const total = estimates.reduce((sum, lender) => sum + lender.fee, 0);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    // Le bouton « Obtenir une proforma » envoie le même formulaire : la proforma ne bloque pas le stock.
-    const intent = requiresQuote || (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "quote" ? "quote" : "pay";
     const fd = new FormData(e.currentTarget);
-    if (intent === "pay" && !accepted) {
-      setError("Cochez « Lu et approuvé » pour passer au paiement.");
-      return;
-    }
-    setPending(intent);
+    setPending(true);
     setError(null);
     const body = {
       fulfillmentType: mode,
@@ -50,24 +41,19 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
       lenderFulfillment: plans.map((plan) => ({
         lenderId: plan.lenderId,
         mode: plan.mode,
-        preferredDeliveryDate: plan.mode === "DELIVERY" ? String(fd.get(`date-out-${plan.lenderId}`)) : undefined,
-        preferredReturnDate: plan.mode === "DELIVERY" ? String(fd.get(`date-back-${plan.lenderId}`)) : undefined,
+        preferredDeliveryDate: String(fd.get(`date-out-${plan.lenderId}`)),
+        preferredReturnDate: String(fd.get(`date-back-${plan.lenderId}`)),
         deliverySlot: String(fd.get(`out-${plan.lenderId}`) ?? "") || undefined,
         returnSlot: String(fd.get(`back-${plan.lenderId}`) ?? "") || undefined,
       })),
       eventName: String(fd.get("eventName") ?? "").trim() || undefined,
     };
     try {
-      if (intent === "quote") {
-        const quote = await api<{ id: string }>("/api/quotes", { body });
-        router.push(`/proformas/${quote.id}`);
-        return;
-      }
-      const hold = await api<{ id: string }>("/api/holds", { body: { ...body, acceptTerms: true, termsVersion, replaceExisting: true } });
-      router.push(`/paiement?hold=${hold.id}`);
+      const quote = await api<{ id: string }>("/api/quotes", { body });
+      router.push(`/proformas/${quote.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : intent === "quote" ? "Impossible de préparer la proforma pour le moment." : "Impossible de bloquer le stock pour le moment.");
-      setPending(null);
+      setError(err instanceof ApiError ? err.message : "Impossible de préparer la proforma pour le moment.");
+      setPending(false);
     }
   }
 
@@ -88,7 +74,6 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
                 <Select label="Mode de remise" value={plan.mode} onChange={(event) => {
                   const selected = event.target.value as "PICKUP" | "DELIVERY";
                   setChoices((previous) => ({ ...previous, [plan.lenderId]: selected }));
-                  setAccepted(false);
                 }}>
                   <option value="PICKUP">Retrait au dépôt</option>
                   <option value="DELIVERY">Livraison</option>
@@ -96,24 +81,22 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
               )}
               {plan.mode === "PICKUP" && plan.address && <p className="text-sm text-muted">{plan.address}</p>}
               {plan.mode === "DELIVERY" && <p className="text-sm text-muted">Le loueur confirme les jours, les créneaux et le prix avant le paiement.</p>}
-              {plan.mode === "DELIVERY" && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Select label="Jour de livraison souhaité" name={`date-out-${plan.lenderId}`} defaultValue={plan.outDate}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                  <Select label={`Jour de ${labels.out.toLowerCase()} souhaité`} name={`date-out-${plan.lenderId}`} defaultValue={plan.outDate}>
                     <option value={toISODate(addDays(parseDate(plan.outDate), -1))}>La veille · {day(toISODate(addDays(parseDate(plan.outDate), -1)))}</option>
                     <option value={plan.outDate}>Premier jour · {day(plan.outDate)}</option>
                   </Select>
-                  <Select label="Jour de récupération souhaité" name={`date-back-${plan.lenderId}`} defaultValue={plan.backDate}>
+                  <Select label={`Jour de ${labels.back.toLowerCase()} souhaité`} name={`date-back-${plan.lenderId}`} defaultValue={plan.backDate}>
                     <option value={toISODate(addDays(parseDate(plan.backDate), -1))}>Dernier jour · {day(toISODate(addDays(parseDate(plan.backDate), -1)))}</option>
                     <option value={plan.backDate}>Le lendemain · {day(plan.backDate)}</option>
                   </Select>
                 </div>
-              )}
               <div key={plan.mode} className="grid gap-3 sm:grid-cols-2">
-                <Select label={plan.mode === "DELIVERY" ? "Tranche de livraison souhaitée" : `${labels.out} le ${day(plan.outDate)}`} name={`out-${plan.lenderId}`} defaultValue="">
+                <Select label={`Tranche horaire de ${labels.out.toLowerCase()} souhaitée`} name={`out-${plan.lenderId}`} defaultValue="">
                   <option value="">À convenir avec le loueur</option>
                   {SLOTS.map((slot) => <option key={slot} value={slot}>{slotLabel(slot)}</option>)}
                 </Select>
-                <Select label={plan.mode === "DELIVERY" ? "Tranche de récupération souhaitée" : `${labels.back} le ${day(plan.backDate)}`} name={`back-${plan.lenderId}`} defaultValue="">
+                <Select label={`Tranche horaire de ${labels.back.toLowerCase()} souhaitée`} name={`back-${plan.lenderId}`} defaultValue="">
                   <option value="">À convenir avec le loueur</option>
                   {SLOTS.map((slot) => <option key={slot} value={slot}>{slotLabel(slot)}</option>)}
                 </Select>
@@ -143,10 +126,7 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
                 <span className="tabular-nums text-ink">{e.deliveryOnQuote ? "Sur devis" : formatFcfa(e.fee)}</span>
               </li>
             ))}
-            {!requiresQuote && <li className="flex justify-between border-t border-line pt-1.5 font-medium">
-              <span className="text-ink">Frais de livraison estimés</span>
-              <span className="tabular-nums text-ink">{formatFcfa(total)}</span>
-            </li>}
+
           </ul>
         </fieldset>
       )}
@@ -169,25 +149,14 @@ export function FulfillmentForm({ lenders, cities, defaults, termsVersion }: { l
           ))}
         </div>
       )}
-      {!requiresQuote && <Checkbox
-        label={<><span className="font-medium">Lu et approuvé</span><span className="block text-muted">J&apos;accepte la commande{lenders.some((l) => l.terms) ? " et les conditions générales des loueurs ci-dessus" : ""}. Cette acceptation en ligne remplace la signature et figure sur les factures.</span></>}
-        checked={accepted}
-        onChange={(e) => setAccepted(e.target.checked)}
-      />}
-
       {error && (
         <div role="alert">
           <Notice tone="danger">{error}</Notice>
         </div>
       )}
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-        {!requiresQuote && <Button type="submit" value="pay" size="lg" loading={pending === "pay"} disabled={pending !== null} className="w-full sm:w-auto">
-          Bloquer le stock et passer au paiement
-        </Button>}
-        <Button type="submit" value="quote" variant="secondary" size="lg" loading={pending === "quote"} disabled={pending !== null} className="w-full sm:w-auto">
-          {requiresQuote ? "Demander la confirmation de livraison" : "Obtenir une proforma"}
-        </Button>
-      </div>
+      <Button type="submit" size="lg" loading={pending} disabled={pending}>
+        Demander la confirmation des créneaux
+      </Button>
       <p className="text-sm text-muted">Le stock est réservé pour vous pendant quelques minutes, le temps de régler la commande. La proforma chiffre la commande sans bloquer le stock : vous pourrez la payer depuis son lien.</p>
       <p className="text-sm text-muted">Le matériel reste indisponible pour une autre location le jour de sa récupération. Ce jour de retour n&apos;ajoute pas de journée facturée.</p>
     </form>

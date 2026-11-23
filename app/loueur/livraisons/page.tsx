@@ -47,7 +47,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       <PageHeader title="Livraisons" description="Planifiez, suivez et prouvez chaque livraison. Le client est prévenu à chaque changement de statut." />
       {requests.length > 0 && (
         <section aria-labelledby="delivery-price-requests" className="mb-6 space-y-3">
-          <h2 id="delivery-price-requests" className="text-lg font-semibold">Tarifs de livraison à confirmer</h2>
+          <h2 id="delivery-price-requests" className="text-lg font-semibold">Livraisons et retraits à confirmer</h2>
           {requests.map((request) => {
             const data = request.data as unknown as QuoteData;
             const plan = fulfillmentFor(request, actor.lenderId);
@@ -58,13 +58,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
                 <p className="text-sm text-muted">{data.buyer.address}</p>
                 {data.eventDate && <p className="text-sm text-muted">Événement le {formatDate(new Date(data.eventDate))}</p>}
                 <p className="text-sm text-muted">Réponse attendue avant le {formatDate(request.validUntil)}</p>
-                <p className="text-sm text-muted">Créneaux demandés · livraison {schedule.outSlot ?? "à convenir"} · récupération {schedule.backSlot ?? "à convenir"}</p>
+                <p className="text-sm text-muted">Créneaux demandés · {plan.mode === "PICKUP" ? "retrait" : "livraison"} {schedule.outSlot ?? "à convenir"} · {plan.mode === "PICKUP" ? "retour" : "récupération"} {schedule.backSlot ?? "à convenir"}</p>
                 <ul className="mt-2 text-sm">
                   {request.items.map((item, index) => (
                     <li key={index}>{item.quantity} × {item.product.name} du {formatDate(item.startDate)} au {formatDate(item.endDate)}</li>
                   ))}
                 </ul>
-                <DeliveryPriceForm quoteId={request.id} outDate={schedule.outDate} backDate={schedule.backDate} eventDate={data.eventDate} requestedDates={data.groups.find((group) => group.lenderId === actor.lenderId)?.requestedDates} preferredOut={schedule.outSlot} preferredBack={schedule.backSlot} />
+                <DeliveryPriceForm quoteId={request.id} pickup={plan.mode === "PICKUP"} outDate={schedule.outDate} backDate={schedule.backDate} eventDate={data.eventDate} requestedDates={data.groups.find((group) => group.lenderId === actor.lenderId)?.requestedDates} preferredOut={schedule.outSlot} preferredBack={schedule.backSlot} />
               </Card>
             );
           })}

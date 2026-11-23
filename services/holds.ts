@@ -77,6 +77,10 @@ const sameContent = (a: Line[], b: Line[]) => {
  * Avec `source`, les lignes viennent d'une proforma au lieu du panier.
  */
 export async function createHold(userId: string, input: HoldInput, meta: RequestMeta = {}, source?: { lines: Line[]; quoteId: string; terms: TermsSnapshot }) {
+  if (!source && input.lenderFulfillment?.some((plan) => plan.preferredDeliveryDate || plan.preferredReturnDate
+    || plan.confirmedPickupDate || plan.confirmedDepotReturnDate)) {
+    throw new AppError("VALIDATION_ERROR", "Demandez la confirmation des jours et créneaux depuis une proforma.");
+  }
   const settings = await getSettings();
   const cart = source ? null : await db.cart.findUnique({ where: { userId }, include: { items: true } });
   const lines: Line[] = source ? source.lines : (cart?.items ?? []).map((i) => ({ productId: i.productId, quantity: i.quantity, startDate: i.startDate, endDate: i.endDate }));

@@ -6,6 +6,8 @@ import { slotInput } from "./slots";
 export const lenderFulfillmentInput = z.array(z.object({
   lenderId: z.string().min(1),
   mode: z.enum(["PICKUP", "DELIVERY"]),
+  confirmedPickupDate: z.iso.date().optional(),
+  confirmedDepotReturnDate: z.iso.date().optional(),
   preferredDeliveryDate: z.iso.date().optional(),
   preferredReturnDate: z.iso.date().optional(),
   deliverySlot: slotInput.optional(),
@@ -25,6 +27,8 @@ export function fulfillmentFor(order: OrderFulfillment, lenderId: string) {
   const configured = order.lenderFulfillment as LenderFulfillment | null | undefined;
   return configured?.find((entry) => entry.lenderId === lenderId) ?? {
     mode: order.fulfillmentType,
+    confirmedPickupDate: undefined,
+    confirmedDepotReturnDate: undefined,
     deliverySlot: order.deliverySlot,
     returnSlot: order.returnSlot,
   };
