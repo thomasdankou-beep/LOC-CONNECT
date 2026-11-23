@@ -173,6 +173,7 @@ export const companyInput = z.object({
   offersDelivery: z.boolean().optional(),
   /** Livraison imposée : le client ne peut pas retirer le matériel chez le loueur. */
   deliveryRequired: z.boolean().optional(),
+  deliveryOnQuote: z.boolean().optional(),
   deliveryFeeLocal: z.number().int().min(0).max(1_000_000).optional(),
   deliveryFeeRemote: z.number().int().min(0).max(1_000_000).optional(),
   rccm: z.string().trim().max(60).optional(),
@@ -189,7 +190,7 @@ export async function updateCompany(actor: LenderActor, input: z.infer<typeof co
   const before = await db.lender.findUniqueOrThrow({ where: { id: actor.lenderId } });
   // Sans livraison proposée, la livraison ne peut pas être obligatoire.
   const offersDelivery = input.offersDelivery ?? before.offersDelivery;
-  const updated = await db.lender.update({ where: { id: actor.lenderId }, data: { ...input, ...(offersDelivery ? {} : { deliveryRequired: false }) } });
+  const updated = await db.lender.update({ where: { id: actor.lenderId }, data: { ...input, ...(offersDelivery ? {} : { deliveryRequired: false, deliveryOnQuote: false }) } });
   await audit(db, { userId: actor.userId, lenderId: actor.lenderId, action: "company.update", entity: "Lender", entityId: actor.lenderId, oldValue: { fees: [before.deliveryFeeLocal, before.deliveryFeeRemote], offersDelivery: before.offersDelivery, deliveryRequired: before.deliveryRequired }, newValue: input, meta: actor.meta });
   return updated;
 }

@@ -1,3 +1,4 @@
+import { fulfillmentFor } from "@/lib/fulfillment";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { pageActor } from "@/lib/auth/page";
@@ -34,7 +35,7 @@ export default async function Page({ params }: { params: Promise<{ itemId: strin
     platform: { name: settings["invoice.company_name"], address: settings["invoice.company_address"], rccm: settings["invoice.company_rccm"], ncc: settings["invoice.company_ncc"], phone: settings["site.support_phone"], email: settings["site.support_email"] },
     seller: lenderParty(item.lender),
     buyer: { name: `${item.reservation.client.firstName} ${item.reservation.client.lastName}`, phone: item.reservation.contactPhone ?? item.reservation.client.phone, email: item.reservation.client.email },
-    reservation: { reference: item.reservation.reference, fulfillment: item.reservation.fulfillmentType, createdAt: item.reservation.createdAt.toISOString() },
+    reservation: { reference: item.reservation.reference, fulfillment: fulfillmentFor(item.reservation, item.lenderId).mode, createdAt: item.reservation.createdAt.toISOString() },
     lines,
     damage: { depositAmount: deposit, withheld: report.withheldAmount, released: deposit - report.withheldAmount, extraCharge: report.extraChargeAmount, condition: report.condition, comment: report.comment, photos: report.photos.map((p) => p.storageKey), rentedQuantity: report.rentedQuantity, returnedQuantity: report.returnedQuantity },
     notes: ["Montants déclarés par le loueur, non définitifs.", "La facture de casse et perte numérotée sera émise quand les montants seront arrêtés : acceptation du client, fin du délai de contestation ou décision de LOC'CONNECT."],

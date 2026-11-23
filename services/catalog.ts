@@ -1,7 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { notFound } from "@/lib/errors";
-import { availabilityForProducts, minAvailable } from "./availability";
+import { availabilityForProducts, inventoryEnd, minAvailable } from "./availability";
+import { getSettings } from "@/lib/settings";
 
 export type ProductSort = "relevance" | "price_asc" | "price_desc" | "newest" | "rating";
 
@@ -87,13 +88,14 @@ export async function searchProducts(search: ProductSearch) {
   if (and.length) where.AND = and;
 
   const hasPeriod = Boolean(search.start && search.end && search.start < search.end);
+  const availabilityEnd = hasPeriod ? inventoryEnd(search.end!, await getSettings()) : null;
   const decorate = (items: ProductCard[], avail: Map<string, number>) =>
     items.map((p) => ({ ...p, availableQty: hasPeriod ? (avail.get(p.id) ?? 0) : null, featured: promoIds.has(p.id) }));
 
   if (hasPeriod && search.availableOnly) {
     // Le filtre de disponibilité dépend de calculs jour par jour : on borne le jeu de candidats puis on filtre.
     const candidates = await db.product.findMany({ where, include: productCardInclude, orderBy: orderBy(search.sort), take: 400 });
-    const avail = await availabilityForProducts(db, candidates.map((c) => c.id), search.start!, search.end!);
+    const avail = await availabilityForProducts(db, candidates.map((c) => c.id), search.start!, availabilityEnd!);
     const qty = new Map([...avail].map(([id, days]) => [id, minAvailable(days)]));
     const filtered = candidates.filter((c) => (qty.get(c.id) ?? 0) > 0);
     const total = filtered.length;
@@ -107,7 +109,7 @@ export async function searchProducts(search: ProductSearch) {
   ]);
   const qty = new Map<string, number>();
   if (hasPeriod) {
-    const avail = await availabilityForProducts(db, rows.map((r) => r.id), search.start!, search.end!);
+    const avail = await availabilityForProducts(db, rows.map((r) => r.id), search.start!, availabilityEnd!);
     for (const [id, days] of avail) qty.set(id, minAvailable(days));
   }
   return { items: decorate(rows, qty), total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };

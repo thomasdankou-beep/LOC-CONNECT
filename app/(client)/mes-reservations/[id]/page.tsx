@@ -1,3 +1,4 @@
+import { fulfillmentFor, isMixedFulfillment } from "@/lib/fulfillment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -60,7 +61,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
             <StatusBadge entry={RESERVATION_STATUS[r.status]} />
             {initialPayment?.provider === "simulated" && <Badge tone="warning">Paiement simulé</Badge>}
           </div>
-          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {r.eventName ? `${r.eventName} · ` : ""}{FULFILLMENT[r.fulfillmentType]}{slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot) ? ` (${slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot)})` : ""}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
+          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {r.eventName ? `${r.eventName} · ` : ""}{isMixedFulfillment(r) ? "Livraison et retrait" : FULFILLMENT[r.fulfillmentType]}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {hold && <LinkButton href={`/paiement?hold=${hold.id}`}>Finaliser le paiement</LinkButton>}
@@ -80,6 +81,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
         <div className="space-y-6">
           {[...byLender.entries()].map(([lenderId, items]) => {
             const lender = items[0].lender;
+            const plan = fulfillmentFor(r, lenderId);
             const delivery = r.deliveries.find((d) => d.lenderId === lenderId);
             const cash = r.cashSettlements.find((c) => c.lenderId === lenderId && c.status !== "CANCELLED");
             return (
@@ -104,7 +106,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
                             </div>
                             <p className="mt-1 text-sm text-muted">Du {formatDate(i.startDate)} au {formatDate(i.endDate)} ({i.days} jour{i.days > 1 ? "s" : ""}) · {formatFcfa(i.unitPrice)} par jour</p>
                             <p className="mt-0.5 text-sm font-medium tabular-nums text-ink">{formatFcfa(i.subtotal)}{i.cashDue > 0 && <span className="font-normal text-muted"> · acompte en ligne {formatFcfa(i.subtotal - i.cashDue)}, solde en espèces {formatFcfa(i.cashDue)}</span>}</p>
-                            <p className="mt-1 text-sm text-royal-ink">{nextActionForClient(i.status, { fulfillment: r.fulfillmentType, extraChargePending: pendingExtra.length > 0, contestable: report?.status === "SUBMITTED" && Boolean(report.contestDeadline && report.contestDeadline > new Date()) })}</p>
+                            <p className="mt-1 text-sm text-royal-ink">{nextActionForClient(i.status, { fulfillment: plan.mode, extraChargePending: pendingExtra.length > 0, contestable: report?.status === "SUBMITTED" && Boolean(report.contestDeadline && report.contestDeadline > new Date()) })}</p>
 
                             {i.deposit && (
                               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-control bg-surface-2/60 px-3 py-2 text-sm">
@@ -158,6 +160,14 @@ export default async function ReservationDetailPage({ params }: { params: Promis
                     );
                   })}
                 </ul>
+                {plan.mode === "PICKUP" && (
+                  <div className="border-t border-line bg-surface-2/40 px-5 py-4 text-sm">
+                    <p className="font-medium">Retrait et retour au dépôt</p>
+                    {lender.address && <p className="mt-1 text-muted">{lender.address}</p>}
+                    <p className="mt-1 text-muted">Retrait le {formatDate(new Date(Math.min(...items.map((item) => item.startDate.getTime()))))} · retour le {formatDate(new Date(Math.max(...items.map((item) => item.endDate.getTime()))))}</p>
+                    <p className="mt-1 text-muted">{slotSummary(plan.mode, plan.deliverySlot ?? null, plan.returnSlot ?? null) ?? "Créneaux à convenir avec le loueur"}</p>
+                  </div>
+                )}
                 {cash && <ClientCashBox cash={cash} paid={paidOnline} />}
                 {delivery && delivery.type === "DELIVERY" && (
                   <div className="border-t border-line bg-surface-2/40 px-5 py-4 text-sm">

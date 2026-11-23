@@ -38,6 +38,7 @@ export const SETTING_DEFS = {
   "modification.request_validity_hours": { default: 48, type: "int", group: "Modification", label: "Validité d'une demande (heures)", description: "Une demande non traitée ou non payée expire passé ce délai." },
   "booking.max_days": { default: 90, type: "int", group: "Réservation", label: "Durée maximale d'une location (jours)", description: "Plafond appliqué à toutes les lignes." },
   "booking.min_lead_hours": { default: 0, type: "int", group: "Réservation", label: "Délai minimal avant le début (heures)", description: "Délai minimal entre la réservation et le début de la location." },
+  "booking.return_buffer_days": { default: 1, type: "int", group: "Réservation", label: "Immobilisation à compter du jour de retour (jours)", description: "1 bloque le jour de récupération ; augmentez ce délai pour le transport et la remise en état. Ce délai n'ajoute aucun jour facturé (1 à 30)." },
   "reservation.lender_must_accept": { default: false, type: "bool", group: "Réservation", label: "Acceptation manuelle par le loueur", description: "Si activé, une réservation payée attend la confirmation du loueur. Sinon elle est confirmée automatiquement." },
   "moderation.products_require_review": { default: true, type: "bool", group: "Modération", label: "Validation des produits avant publication", description: "Les produits soumis par les loueurs passent par la modération." },
   "moderation.reviews_require_approval": { default: false, type: "bool", group: "Modération", label: "Validation des avis avant publication", description: "Si activé, un avis attend la modération pour apparaître." },
@@ -104,6 +105,7 @@ export function validateSettingValue(key: string, value: unknown): number | bool
     const n = Number(value);
     if (!Number.isInteger(n) || n < 0) throw new Error(`${def.label} : entier positif attendu.`);
     if ((key === "deposit.percent" || key === "deposit.min_value_percent") && n > 100) throw new Error(`${def.label} : entre 0 et 100.`);
+    if (key === "booking.return_buffer_days" && (n < 1 || n > 30)) throw new Error(`${def.label} : entre 1 et 30.`);
     return n;
   }
   if (def.type === "bool") {

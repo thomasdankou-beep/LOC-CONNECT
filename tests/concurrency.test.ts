@@ -39,8 +39,9 @@ describe("réservations concurrentes", () => {
 
     // 2 unités du 12 au 15 : le 12 il ne reste que 1 unité.
     await expect(addToCart(c2.user.id, { productId: product.id, quantity: 2, startDate: day(12), endDate: day(15) })).rejects.toMatchObject({ code: "STOCK_INSUFFICIENT" });
-    // Période adjacente (fin = début existant) : aucune collision.
-    await addToCart(c3.user.id, { productId: product.id, quantity: 5, startDate: day(13), endDate: day(15) });
+    // Le jour de retour reste occupé, même si la période facturée se termine ce jour-là.
+    await expect(addToCart(c3.user.id, { productId: product.id, quantity: 5, startDate: day(13), endDate: day(15) })).rejects.toMatchObject({ code: "STOCK_INSUFFICIENT" });
+    await addToCart(c3.user.id, { productId: product.id, quantity: 5, startDate: day(14), endDate: day(15) });
     await expect(createHold(c3.user.id, { fulfillmentType: "PICKUP", replaceExisting: false })).resolves.toBeTruthy();
   });
 

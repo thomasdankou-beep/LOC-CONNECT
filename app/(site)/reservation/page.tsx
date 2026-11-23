@@ -12,6 +12,7 @@ import { Notice } from "@/components/ui/states";
 import { FulfillmentForm } from "@/features/checkout/fulfillment-form";
 import { CheckoutSteps } from "@/features/checkout/steps";
 import { ShieldCheck } from "@/components/ui/icons";
+import { snapshotTerms, termsVersion } from "@/services/order-snapshot";
 
 export const metadata: Metadata = { title: "Récapitulatif de la réservation", robots: { index: false } };
 
@@ -30,7 +31,7 @@ export default async function ReservationPage() {
   if (cart.issues > 0) redirect("/panier");
 
   const lenderIds = cart.groups.map((g) => g.lenderId);
-  const lenders = await db.lender.findMany({ where: { id: { in: lenderIds } }, select: { id: true, companyName: true, cityId: true, offersDelivery: true, deliveryFeeLocal: true, deliveryFeeRemote: true, terms: true, deliveryRequired: true } });
+  const lenders = await db.lender.findMany({ where: { id: { in: lenderIds } }, select: { id: true, companyName: true, address: true, cityId: true, offersDelivery: true, deliveryOnQuote: true, deliveryFeeLocal: true, deliveryFeeRemote: true, terms: true, deliveryRequired: true } });
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-4 pt-8 sm:px-6">
@@ -39,10 +40,19 @@ export default async function ReservationPage() {
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_24rem]">
         <Card className="p-6 sm:p-8">
           <FulfillmentForm
-            lenders={lenders.map((l) => ({ lenderId: l.id, name: l.companyName, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, terms: l.terms, deliveryRequired: l.deliveryRequired }))}
+            termsVersion={termsVersion(snapshotTerms(lenders))}
+            lenders={lenders.map((l) => {
+              const lines = cart.lines.filter((line) => line.lenderId === l.id);
+              return {
+                lenderId: l.id, name: l.companyName, address: l.address, cityId: l.cityId,
+                offersDelivery: l.offersDelivery, deliveryOnQuote: l.deliveryOnQuote, feeLocal: l.deliveryFeeLocal,
+                feeRemote: l.deliveryFeeRemote, terms: l.terms, deliveryRequired: l.deliveryRequired,
+                outDate: lines.map((line) => line.startDate).sort()[0],
+                backDate: lines.map((line) => line.endDate).sort().at(-1)!,
+              };
+            })}
             cities={cities.map((c) => ({ id: c.id, name: c.name }))}
             defaults={{ address: user.deliveryAddress ?? "", cityId: user.cityId ?? "", phone: user.phone ?? "" }}
-            schedule={{ outDate: cart.lines.map((l) => l.startDate).sort()[0], backDate: cart.lines.map((l) => l.endDate).sort().at(-1)! }}
           />
         </Card>
         <aside className="space-y-5">

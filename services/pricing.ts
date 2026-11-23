@@ -105,6 +105,7 @@ export type LenderDeliveryTerms = {
   lenderId: string;
   cityId: string;
   offersDelivery: boolean;
+  fulfillment?: FulfillmentType;
   feeLocal: number;
   feeRemote: number;
   commissionRateBps: number;
@@ -153,7 +154,7 @@ export function computeTotals(
   const byLender: LenderBreakdown[] = lenderIds.map((lenderId) => {
     const mine = lines.filter((l) => l.lenderId === lenderId);
     const t = terms.get(lenderId);
-    const delivery = t ? deliveryFeeFor(t, fulfillment, addressCityId) : 0;
+    const delivery = t ? deliveryFeeFor(t, t.fulfillment ?? fulfillment, addressCityId) : 0;
     const rental = sum(mine.map((l) => l.subtotal));
     const deliveryCommission = commissionOnDelivery && t ? applyBps(delivery, t.commissionRateBps) : 0;
     const commission = sum(mine.map((l) => l.commission)) + deliveryCommission;

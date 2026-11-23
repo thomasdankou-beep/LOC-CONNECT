@@ -444,6 +444,7 @@ model Lender {
   reviewCount       Int               @default(0)
   offersDelivery    Boolean           @default(true)
   deliveryRequired  Boolean           @default(false) // livraison imposée par le loueur : pas de retrait chez lui
+  deliveryOnQuote   Boolean           @default(false)
   deliveryFeeLocal  Int               @default(3000)
   deliveryFeeRemote Int               @default(8000)
   commissionRateBps Int?
@@ -709,6 +710,7 @@ model Hold {
   expiresAt              DateTime
   durationMinutes        Int
   fulfillmentType        FulfillmentType @default(PICKUP)
+  lenderFulfillment Json?
   deliveryAddress        String?
   deliveryCityId         String?
   deliveryZone           String?
@@ -717,6 +719,7 @@ model Hold {
   returnSlot             String? // créneau de récupération ou de retour
   eventName              String? // événement ou société du client, imprimé sur les documents
   termsAcceptedAt        DateTime? // « Lu et approuvé » coché par le client
+  termsSnapshot          Json? // conditions exactes acceptées, indexées par loueur
   quoteId                String? // proforma payée par ce blocage
   convertedReservationId String?
   releasedAt             DateTime?
@@ -753,6 +756,7 @@ model Reservation {
   client             User              @relation(fields: [clientId], references: [id])
   status             ReservationStatus @default(PENDING_PAYMENT)
   fulfillmentType    FulfillmentType   @default(PICKUP)
+  lenderFulfillment Json?
   deliveryAddress    String?
   deliveryCityId     String?
   deliveryZone       String?
@@ -761,6 +765,7 @@ model Reservation {
   returnSlot         String? // créneau de récupération ou de retour
   eventName          String?
   termsAcceptedAt    DateTime? // « Lu et approuvé » coché par le client avant le paiement
+  termsSnapshot      Json? // conditions acceptées, conservées jusqu'à la facture
   quoteId            String?
   quote              Quote?            @relation(fields: [quoteId], references: [id])
   subtotal           Int
@@ -1075,6 +1080,7 @@ model Quote {
   client          User            @relation(fields: [clientId], references: [id])
   validUntil      DateTime
   fulfillmentType FulfillmentType @default(PICKUP)
+  lenderFulfillment Json?
   deliveryAddress String?
   deliveryCityId  String?
   deliveryZone    String?
@@ -1103,6 +1109,8 @@ model QuoteItem {
   quantity  Int
   startDate DateTime @db.Date
   endDate   DateTime @db.Date
+  requestedStartDate DateTime? @db.Date
+  requestedEndDate   DateTime? @db.Date
 }
 
 /// Solde payé en espèces au loueur à la remise du matériel (un par loueur et par réservation).

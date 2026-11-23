@@ -1,3 +1,4 @@
+import { fulfillmentFor } from "@/lib/fulfillment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
@@ -32,7 +33,7 @@ export default async function LenderDashboard({ searchParams }: { searchParams: 
   const [balance, revenue, upcoming, toValidate, toReturn, deliveriesToday, mods, openDisputes, products, deposits, stock] = await Promise.all([
     showFinance ? lenderBalance(lenderId) : null,
     showFinance ? lenderRevenueByMonth(lenderId, 6) : [],
-    db.reservationItem.findMany({ where: { lenderId, status: { in: ["PAID", "CONFIRMED", "READY"] }, startDate: { gte: today } }, include: { reservation: { select: { id: true, reference: true, fulfillmentType: true, client: { select: { firstName: true, lastName: true } } } } }, orderBy: { startDate: "asc" }, take: 6 }),
+    db.reservationItem.findMany({ where: { lenderId, status: { in: ["PAID", "CONFIRMED", "READY"] }, startDate: { gte: today } }, include: { reservation: { select: { id: true, reference: true, fulfillmentType: true, lenderFulfillment: true, client: { select: { firstName: true, lastName: true } } } } }, orderBy: { startDate: "asc" }, take: 6 }),
     db.reservationItem.count({ where: { lenderId, status: "PAID" } }),
     db.reservationItem.count({ where: { lenderId, status: { in: ["IN_USE", "RETURN_PENDING"] }, returnReport: null, endDate: { lte: addDays(today, 1) } } }),
     db.delivery.count({ where: { lenderId, status: { in: ["PENDING", "PREPARING", "OUT_FOR_DELIVERY"] }, scheduledDate: { lte: addDays(today, 1) }, reservation: { status: { notIn: ["HOLD", "PENDING_PAYMENT", "CANCELLED", "REFUNDED"] } } } }),
@@ -101,7 +102,7 @@ export default async function LenderDashboard({ searchParams }: { searchParams: 
                   <Link href={`/loueur/reservations/${i.reservation.id}`} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 transition hover:bg-surface-2/50">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-ink">{i.quantity} x {i.productName}</p>
-                      <p className="text-xs text-muted">{i.reservation.client.firstName} {i.reservation.client.lastName.slice(0, 1)}. · {formatDate(i.startDate)} · {i.reservation.fulfillmentType === "DELIVERY" ? "livraison" : "retrait"}</p>
+                      <p className="text-xs text-muted">{i.reservation.client.firstName} {i.reservation.client.lastName.slice(0, 1)}. · {formatDate(i.startDate)} · {fulfillmentFor(i.reservation, i.lenderId).mode === "DELIVERY" ? "livraison" : "retrait"}</p>
                     </div>
                     <StatusBadge entry={RESERVATION_STATUS[i.status]} />
                   </Link>

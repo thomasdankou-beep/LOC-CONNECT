@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { AppError, notFound } from "@/lib/errors";
 import { parseDate, daysBetween } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
-import { availabilityForProduct, minAvailable, validateRentalPeriod } from "./availability";
+import { availabilityForProduct, inventoryEnd, minAvailable, validateRentalPeriod } from "./availability";
 import { depositFloorFrom, depositPercentFrom, effectivePaymentMode, priceLine } from "./pricing";
 import { commissionRateFor } from "./plans";
 import type { LenderPaymentMode } from "@prisma/client";
@@ -32,12 +32,12 @@ function parsePeriod(startDate: string, endDate: string) {
   }
 }
 
-async function checkLine(productId: string, quantity: number, start: Date, end: Date) {
+async function checkLine(userId: string, productId: string, quantity: number, start: Date, end: Date) {
   const settings = await getSettings();
   const product = await db.product.findFirst({ where: { id: productId, status: "PUBLISHED", deletedAt: null, lender: { status: "APPROVED" } }, include: { lender: true } });
   if (!product) throw notFound("Produit");
   validateRentalPeriod(settings, product, { quantity, start, end });
-  const days = await availabilityForProduct(db, productId, start, end);
+  const days = await availabilityForProduct(db, productId, start, inventoryEnd(end, settings), { excludeHoldUserId: userId });
   const free = minAvailable(days);
   if (quantity > free) {
     const blocked = days.some((d) => d.lenderBlocked);
@@ -48,12 +48,12 @@ async function checkLine(productId: string, quantity: number, start: Date, end: 
 
 export async function addToCart(userId: string, input: CartItemInput) {
   const { start, end } = parsePeriod(input.startDate, input.endDate);
-  await checkLine(input.productId, input.quantity, start, end);
+  await checkLine(userId, input.productId, input.quantity, start, end);
   const cart = await ensureCart(userId);
   const existing = await db.cartItem.findFirst({ where: { cartId: cart.id, productId: input.productId, startDate: start, endDate: end } });
   if (existing) {
     const quantity = existing.quantity + input.quantity;
-    await checkLine(input.productId, quantity, start, end);
+    await checkLine(userId, input.productId, quantity, start, end);
     return db.cartItem.update({ where: { id: existing.id }, data: { quantity } });
   }
   return db.cartItem.create({ data: { cartId: cart.id, productId: input.productId, quantity: input.quantity, startDate: start, endDate: end } });
@@ -71,7 +71,7 @@ export async function updateCartItem(userId: string, itemId: string, patch: z.in
   const start = patch.startDate ? parsePeriod(patch.startDate, patch.endDate ?? item.endDate.toISOString().slice(0, 10)).start : item.startDate;
   const end = patch.endDate ? parsePeriod(patch.startDate ?? item.startDate.toISOString().slice(0, 10), patch.endDate).end : item.endDate;
   const quantity = patch.quantity ?? item.quantity;
-  await checkLine(item.productId, quantity, start, end);
+  await checkLine(userId, item.productId, quantity, start, end);
   return db.cartItem.update({ where: { id: item.id }, data: { quantity, startDate: start, endDate: end } });
 }
 
@@ -130,7 +130,7 @@ export async function getCart(userId: string): Promise<CartView> {
     const rate = commissionRateFor(p.lender, settings);
     const paymentMode = effectivePaymentMode(p.lender, settings);
     const priced = priceLine({ productId: p.id, lenderId: p.lenderId, quantity: item.quantity, start: item.startDate, end: item.endDate, unitPrice: p.unitPrice, depositAmount: p.depositAmount, refundPrice: p.refundPrice, commissionRateBps: rate, paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings), depositFloorPercent: depositFloorFrom(settings) });
-    const days = await availabilityForProduct(db, p.id, item.startDate, item.endDate);
+    const days = await availabilityForProduct(db, p.id, item.startDate, inventoryEnd(item.endDate, settings), { excludeHoldUserId: userId });
     const free = minAvailable(days);
     const sellable = p.status === "PUBLISHED" && !p.deletedAt && p.lender.status === "APPROVED";
     lines.push({

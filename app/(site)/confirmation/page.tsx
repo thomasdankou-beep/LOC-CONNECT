@@ -1,3 +1,4 @@
+import { isMixedFulfillment } from "@/lib/fulfillment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -84,7 +85,7 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
         <h2 className="text-lg font-semibold text-ink">Prochaines étapes</h2>
         <ol className="mt-4 space-y-4 text-[15px]">
           <li className="flex gap-3"><ClipboardText size={22} className="mt-0.5 shrink-0 text-royal-ink" /><span><span className="font-medium text-ink">Les loueurs préparent votre commande.</span> <span className="text-muted">Vous êtes notifié à chaque changement de statut.</span></span></li>
-          <li className="flex gap-3">{r.fulfillmentType === "DELIVERY" ? <Truck size={22} className="mt-0.5 shrink-0 text-royal-ink" /> : <Storefront size={22} className="mt-0.5 shrink-0 text-royal-ink" />}<span><span className="font-medium text-ink">{r.fulfillmentType === "DELIVERY" ? "Livraison à l'adresse indiquée." : "Retrait chez chaque loueur."}</span> <span className="text-muted">Présentez la référence {r.reference}.</span></span></li>
+          <li className="flex gap-3">{r.fulfillmentType === "DELIVERY" ? <Truck size={22} className="mt-0.5 shrink-0 text-royal-ink" /> : <Storefront size={22} className="mt-0.5 shrink-0 text-royal-ink" />}<span><span className="font-medium text-ink">{isMixedFulfillment(r) ? "Livraison et retrait selon le loueur." : r.fulfillmentType === "DELIVERY" ? "Livraison à l'adresse indiquée." : "Retrait chez chaque loueur."}</span> <span className="text-muted">Présentez la référence {r.reference}.</span></span></li>
           <li className="flex gap-3"><CheckCircle size={22} className="mt-0.5 shrink-0 text-royal-ink" /><span><span className="font-medium text-ink">Au retour, un constat est établi.</span> <span className="text-muted">Votre caution est libérée ou ajustée selon l&apos;état du matériel.</span></span></li>
         </ol>
       </Card>

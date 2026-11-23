@@ -19,15 +19,27 @@ export type DayAvailability = {
 export type AvailabilityOptions = {
   /** Ignore ce HOLD (le client re-vérifie son propre blocage). */
   excludeHoldId?: string;
+  /** Le panier peut être repris sans être bloqué par les propres HOLD du client. */
+  excludeHoldUserId?: string;
   /** Ignore ces lignes de réservation (modification d'une réservation existante). */
   excludeItemIds?: string[];
   now?: Date;
 };
 
+export function returnBufferDays(settings: Pick<Settings, "booking.return_buffer_days">): number {
+  return Math.min(30, Math.max(1, settings["booking.return_buffer_days"]));
+}
+
+/** Fin physique exclusive ; la durée facturée conserve sa date de fin d'origine. */
+export function inventoryEnd(end: Date, settings: Pick<Settings, "booking.return_buffer_days">): Date {
+  return addDays(end, returnBufferDays(settings));
+}
+
 /**
  * Disponibilité jour par jour, pour plusieurs produits à la fois.
  * stock_disponible = stock_physique - indisponible - réservé - HOLD actifs (cahier des charges 16 BIS).
- * Période semi-ouverte [start, end). Un HOLD expiré ne compte jamais, même si le nettoyage n'est pas encore passé.
+ * Le jour de retour reste occupé (créneaux et préparation). La période facturée reste [start, end).
+ * Un HOLD expiré ne compte jamais, même si le nettoyage n'est pas encore passé.
  */
 export async function availabilityForProducts(
   client: DbOrTx,
@@ -39,6 +51,9 @@ export async function availabilityForProducts(
   const now = opts.now ?? new Date();
   const result = new Map<string, DayAvailability[]>();
   if (productIds.length === 0 || end <= start) return result;
+  const settings = await getSettings(client);
+  const buffer = returnBufferDays(settings);
+  const lastRelevantEnd = addDays(start, 1 - buffer);
 
   const days = eachDay(start, end);
   const index = (d: Date) => daysBetween(start, d);
@@ -50,7 +65,7 @@ export async function availabilityForProducts(
         productId: { in: productIds },
         status: { in: OCCUPYING_STATUSES },
         startDate: { lt: end },
-        endDate: { gt: start },
+        endDate: { gte: lastRelevantEnd },
         ...(opts.excludeItemIds?.length ? { id: { notIn: opts.excludeItemIds } } : {}),
       },
       select: { productId: true, quantity: true, startDate: true, endDate: true },
@@ -59,8 +74,8 @@ export async function availabilityForProducts(
       where: {
         productId: { in: productIds },
         startDate: { lt: end },
-        endDate: { gt: start },
-        hold: { status: "ACTIVE", expiresAt: { gt: now }, ...(opts.excludeHoldId ? { id: { not: opts.excludeHoldId } } : {}) },
+        endDate: { gte: lastRelevantEnd },
+        hold: { status: "ACTIVE", expiresAt: { gt: now }, ...(opts.excludeHoldId ? { id: { not: opts.excludeHoldId } } : {}), ...(opts.excludeHoldUserId ? { userId: { not: opts.excludeHoldUserId } } : {}) },
       },
       select: { productId: true, quantity: true, startDate: true, endDate: true },
     }),
@@ -85,8 +100,8 @@ export async function availabilityForProducts(
     }
     return map;
   };
-  const reservedMap = spread(items);
-  const heldMap = spread(holds);
+  const reservedMap = spread(items.map((i) => ({ ...i, endDate: addDays(i.endDate, buffer) })));
+  const heldMap = spread(holds.map((i) => ({ ...i, endDate: addDays(i.endDate, buffer) })));
   const blockedMap = spread(blocks);
 
   for (const p of products) {
@@ -148,14 +163,16 @@ export function validateRentalPeriod(
 export async function assertAvailable(tx: Tx, lines: RentalLineRequest[], opts: AvailabilityOptions = {}): Promise<void> {
   const productIds = [...new Set(lines.map((l) => l.productId))];
   await lockProducts(tx, productIds);
+  const settings = await getSettings(tx);
+  const buffer = returnBufferDays(settings);
 
   for (const productId of productIds) {
     const mine = lines.filter((l) => l.productId === productId);
     const from = new Date(Math.min(...mine.map((l) => l.start.getTime())));
-    const to = new Date(Math.max(...mine.map((l) => l.end.getTime())));
+    const to = addDays(new Date(Math.max(...mine.map((l) => l.end.getTime()))), buffer);
     const avail = await availabilityForProduct(tx, productId, from, to, opts);
     const requested = new Map<string, number>();
-    for (const l of mine) for (const d of eachDay(l.start, l.end)) requested.set(toISODate(d), (requested.get(toISODate(d)) ?? 0) + l.quantity);
+    for (const l of mine) for (const d of eachDay(l.start, addDays(l.end, buffer))) requested.set(toISODate(d), (requested.get(toISODate(d)) ?? 0) + l.quantity);
     for (const day of avail) {
       const want = requested.get(day.date) ?? 0;
       if (want > day.available) {

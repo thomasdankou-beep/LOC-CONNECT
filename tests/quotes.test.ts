@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { addToCart } from "@/services/cart";
-import { createReservationFromHold } from "@/services/reservations";
+import { fulfillmentFor } from "@/lib/fulfillment";
+import { createReservationFromHold, lenderAdvance } from "@/services/reservations";
 import { createHold } from "@/services/holds";
 import { initiatePayment, simulatePayment } from "@/services/payments";
-import { createQuote, getQuoteForActor, listQuotes, payQuote, type QuoteData } from "@/services/quotes";
+import { confirmDeliveryPrice, createQuote, listDeliveryPriceRequests, getQuoteForActor, listQuotes, payQuote, type QuoteData } from "@/services/quotes";
 import type { InvoiceData } from "@/services/invoices";
 import { day, makeAdmin, makeBase, makeClient, makeLender, makeProduct, resetDb } from "./helpers";
 
@@ -26,7 +27,7 @@ async function cartWithCounters() {
   const client = await makeClient("Molly");
   await addToCart(client.user.id, { productId: trio.id, quantity: 1, startDate: day(10), endDate: day(11) });
   await addToCart(client.user.id, { productId: duo.id, quantity: 1, startDate: day(10), endDate: day(11) });
-  const input = { fulfillmentType: "DELIVERY" as const, deliveryAddress: "Parc des expositions", deliveryCityId: base.city.id, contactPhone: "+225 07 00 00 00 00", deliverySlot: "14:00-16:00" as const, returnSlot: "08:00-10:00" as const, eventName: "STORY FOAM" };
+  const input = { fulfillmentType: "DELIVERY" as const, deliveryAddress: "Parc des expositions", deliveryCityId: base.city.id, contactPhone: "+225 07 00 00 00 00", deliverySlot: "14:00-16:00" as const, returnSlot: "08:00-10:00" as const, eventName: "STORY FOAM", eventDate: day(10) };
   return { l, trio, duo, client, input };
 }
 
@@ -38,6 +39,97 @@ async function payHold(client: Awaited<ReturnType<typeof makeClient>>, holdId: s
 }
 
 describe("proforma", () => {
+  it("attend le tarif de chaque loueur et conserve les tarifs confirmés au paiement", async () => {
+    const { l, client, input } = await cartWithCounters();
+    const second = await makeLender(base.city.id, { name: "Vaisselle" });
+    const outsider = await makeLender(base.city.id);
+    await db.lender.updateMany({ where: { id: { in: [l.lender.id, second.lender.id] } }, data: { deliveryOnQuote: true } });
+    const plates = await makeProduct(second.lender.id, base.category.id, base.city.id);
+    await addToCart(client.user.id, { productId: plates.id, quantity: 1, startDate: day(10), endDate: day(11) });
+
+    await expect(createHold(client.user.id, { ...input, replaceExisting: true })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    const quote = await createQuote(client.user.id, input);
+    expect((await getQuoteForActor(client.actor, quote.id)).status).toBe("AWAITING_DELIVERY");
+    expect(await listDeliveryPriceRequests(l.actor)).toMatchObject([{ id: quote.id, items: [{}, {}] }]);
+    expect(await listDeliveryPriceRequests(outsider.actor)).toEqual([]);
+    await expect(confirmDeliveryPrice(outsider.actor, quote.id, { amount: 1, deliveryDate: day(10), returnDate: day(11), deliverySlot: "10:00-12:00", returnSlot: "16:00-18:00" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(payQuote(client.user.id, quote.id, { accept: true })).rejects.toMatchObject({ code: "CONFLICT" });
+
+    await confirmDeliveryPrice(l.actor, quote.id, { amount: 15_000, deliveryDate: day(10), returnDate: day(11), deliverySlot: "10:00-12:00", returnSlot: "16:00-18:00" });
+    await expect(payQuote(client.user.id, quote.id, { accept: true })).rejects.toMatchObject({ code: "CONFLICT" });
+    await confirmDeliveryPrice(second.actor, quote.id, { amount: 8_000, deliveryDate: day(10), returnDate: day(11), deliverySlot: "10:00-12:00", returnSlot: "16:00-18:00" });
+    await expect(confirmDeliveryPrice(l.actor, quote.id, { amount: 1, deliveryDate: day(10), returnDate: day(11), deliverySlot: "10:00-12:00", returnSlot: "16:00-18:00" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const ready = await getQuoteForActor(client.actor, quote.id);
+    expect(ready.status).toBe("OPEN");
+    expect(ready.data.totals.delivery).toBe(23_000);
+    expect(ready.data.groups.map((g) => g.delivery).sort((a, b) => a - b)).toEqual([8_000, 15_000]);
+
+    const hold = await payQuote(client.user.id, quote.id, { accept: true });
+    const reservation = await payHold(client, hold.id);
+    expect(reservation.total).toBe(ready.quote.total);
+    expect(reservation.deliveries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lenderId: l.lender.id, fee: 15_000 }),
+      expect.objectContaining({ lenderId: second.lender.id, fee: 8_000 }),
+    ]));
+  });
+
+  it("paie ensemble la livraison sur devis et le retrait, avec les horaires confirmés par le loueur", async () => {
+    const { l, client, input } = await cartWithCounters();
+    await db.lender.update({ where: { id: l.lender.id }, data: { deliveryRequired: true, deliveryOnQuote: true } });
+    const pickup = await makeLender(base.city.id, { name: "Vaisselle", delivery: false });
+    const plates = await makeProduct(pickup.lender.id, base.category.id, base.city.id);
+    await addToCart(client.user.id, { productId: plates.id, quantity: 1, startDate: day(11), endDate: day(12) });
+    const deliveryPlan = { lenderId: l.lender.id, mode: "DELIVERY", deliverySlot: "14:00-16:00" } as const;
+    const pickupPlan = { lenderId: pickup.lender.id, mode: "PICKUP", deliverySlot: "08:00-10:00", returnSlot: "16:00-18:00" } as const;
+    await expect(createQuote(client.user.id, { ...input, lenderFulfillment: [deliveryPlan] })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(createQuote(client.user.id, { ...input, lenderFulfillment: [deliveryPlan, { ...pickupPlan, mode: "DELIVERY" }] })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    const quote = await createQuote(client.user.id, { ...input, lenderFulfillment: [deliveryPlan, pickupPlan] });
+    await expect(payQuote(client.user.id, quote.id, { accept: true })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(confirmDeliveryPrice(l.actor, quote.id, { amount: 15000, deliveryDate: day(11), returnDate: day(11), deliverySlot: "10:00-12:00", returnSlot: "18:00-20:00" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(confirmDeliveryPrice(l.actor, quote.id, { amount: 15000, deliveryDate: day(8), returnDate: day(11), deliverySlot: "10:00-12:00", returnSlot: "18:00-20:00" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(confirmDeliveryPrice(l.actor, quote.id, { amount: 15000, deliveryDate: day(9), returnDate: day(12), deliverySlot: "10:00-12:00", returnSlot: "18:00-20:00" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await confirmDeliveryPrice(l.actor, quote.id, { amount: 15000, deliveryDate: day(9), returnDate: day(11), deliverySlot: "10:00-12:00", returnSlot: "18:00-20:00" });
+    const ready = await getQuoteForActor(client.actor, quote.id);
+    expect(ready.data.groups).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lenderId: l.lender.id, fulfillment: "DELIVERY", delivery: 15000, rental: 340000, schedule: { outDate: day(9), outSlot: "10:00-12:00", backDate: day(11), backSlot: "18:00-20:00" } }),
+      expect.objectContaining({ lenderId: pickup.lender.id, fulfillment: "PICKUP", delivery: 0, schedule: { outDate: day(11), outSlot: "08:00-10:00", backDate: day(12), backSlot: "16:00-18:00" } }),
+    ]));
+
+    const hold = await payQuote(client.user.id, quote.id, { accept: true });
+    const reservation = await payHold(client, hold.id);
+    expect(reservation.total).toBe(ready.quote.total);
+    expect(reservation.deliveries).toHaveLength(1);
+    expect(reservation.deliveries[0]).toMatchObject({ lenderId: l.lender.id, fee: 15000, slotStart: "10:00", slotEnd: "12:00", returnSlotStart: "18:00", returnSlotEnd: "20:00" });
+    expect(reservation.deliveries[0].scheduledDate?.toISOString().slice(0, 10)).toBe(day(9));
+    expect(await db.cartItem.count({ where: { cart: { userId: client.user.id } } })).toBe(0);
+    expect(fulfillmentFor(reservation, pickup.lender.id)).toMatchObject(pickupPlan);
+
+    const invoice = await db.invoice.findFirstOrThrow({ where: { reservationId: reservation.id, lenderId: pickup.lender.id, kind: "RENTAL" } });
+    expect(invoice.data).toMatchObject({ reservation: { fulfillment: "PICKUP" }, schedule: { outDate: day(11), outSlot: "08:00-10:00", backDate: day(12), backSlot: "16:00-18:00" } });
+    await lenderAdvance(pickup.actor, reservation.id, "READY");
+    await expect(lenderAdvance(pickup.actor, reservation.id, "IN_USE")).resolves.toHaveLength(1);
+    await lenderAdvance(l.actor, reservation.id, "READY");
+    await expect(lenderAdvance(l.actor, reservation.id, "IN_USE")).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
+  });
+
+  it("calcule une commande mixte au tarif direct et réutilise le même blocage", async () => {
+    const { l, client, input } = await cartWithCounters();
+    const pickup = await makeLender(base.city.id, { delivery: false });
+    const plates = await makeProduct(pickup.lender.id, base.category.id, base.city.id);
+    await addToCart(client.user.id, { productId: plates.id, quantity: 1, startDate: day(10), endDate: day(11) });
+    const lenderFulfillment = [
+      { lenderId: l.lender.id, mode: "DELIVERY" },
+      { lenderId: pickup.lender.id, mode: "PICKUP" },
+    ] as const;
+    const checkout = { ...input, lenderFulfillment: [...lenderFulfillment], replaceExisting: true, acceptTerms: true };
+    const hold = await createHold(client.user.id, checkout);
+    expect((await createHold(client.user.id, { ...checkout, lenderFulfillment: [...lenderFulfillment].reverse() })).id).toBe(hold.id);
+    const reservation = await payHold(client, hold.id);
+    expect(reservation.deliveryFee).toBe(3000);
+    expect(reservation.deliveries.map((delivery) => delivery.lenderId)).toEqual([l.lender.id]);
+  });
+
   it("chiffre le panier : prix de remboursement, transport, caution, net à payer et créneaux", async () => {
     const { client, input } = await cartWithCounters();
     const quote = await createQuote(client.user.id, input);

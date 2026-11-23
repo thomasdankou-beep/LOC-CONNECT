@@ -227,7 +227,7 @@ describe("paiement : webhook signé et idempotent", () => {
     const product = await makeProduct(a.lender.id, base.category.id, base.city.id);
     const client = await makeClient();
     await addToCart(client.user.id, { productId: product.id, quantity: 1, startDate: day(10), endDate: day(11) });
-    const hold = await createHold(client.user.id, { fulfillmentType: "PICKUP", replaceExisting: true });
+    const hold = await createHold(client.user.id, { fulfillmentType: "PICKUP", acceptTerms: true, replaceExisting: true });
     const reservation = await createReservationFromHold(client.user.id, hold.id);
     const key = randomUUID();
     const p1 = await initiatePayment(client.actor, { reservationId: reservation.id, method: "WAVE", idempotencyKey: key });

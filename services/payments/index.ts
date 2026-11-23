@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Payment, PaymentKind, PaymentMethod } from "@prisma/client";
 import { z } from "zod";
-import { db, lockPayment, transaction, type Tx } from "@/lib/db";
+import { db, lockPayment, lockClientOrders, transaction, type Tx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { reference } from "@/lib/ids";
@@ -16,6 +16,7 @@ import { notifyLendersOfNewReservation, transitionItems } from "../reservations"
 import { cancelCashSettlements } from "../cash";
 import { issueRentalInvoices } from "../invoices";
 import { getProvider, signPayload, type WebhookEventPayload } from "./providers";
+import { readTermsSnapshot } from "../order-snapshot";
 
 export const paymentInput = z.object({
   reservationId: z.string().min(1).optional(),
@@ -64,6 +65,7 @@ export async function initiatePayment(actor: Actor, input: PaymentInput) {
   const settings = await getSettings();
 
   return transaction(async (tx) => {
+    await lockClientOrders(tx, actor.userId);
     const replay = await tx.payment.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (replay) {
       if (replay.userId !== actor.userId) throw new AppError("CONFLICT", "Cette clé d'idempotence est déjà utilisée.");
@@ -85,10 +87,11 @@ export async function initiatePayment(actor: Actor, input: PaymentInput) {
     if (!["HOLD", "PENDING_PAYMENT"].includes(reservation.status)) throw new AppError("CONFLICT", "Cette réservation n'est plus à payer.");
 
     const hold = reservation.holdId ? await tx.hold.findUnique({ where: { id: reservation.holdId } }) : null;
-    if (!hold || hold.status !== "ACTIVE") throw new AppError("HOLD_EXPIRED", "Le blocage de stock a expiré. Relancez le paiement depuis votre panier.");
+    if (!hold || hold.status !== "ACTIVE" || hold.expiresAt <= new Date()) throw new AppError("HOLD_EXPIRED", "Le blocage de stock a expiré. Relancez le paiement depuis votre panier.");
 
     const pending = await tx.payment.findFirst({ where: { reservationId: reservation.id, kind: "INITIAL", status: "PENDING" } });
     if (pending) return { payment: pending, simulated: getProvider(pending.provider).simulated, replayed: true };
+    if (!reservation.termsAcceptedAt || !readTermsSnapshot(reservation.termsSnapshot)?.length) throw new AppError("VALIDATION_ERROR", "Lisez et acceptez les conditions des loueurs depuis la page de commande avant de payer.");
 
     const payment = await createPaymentRecord(tx, { kind: "INITIAL", reservationId: reservation.id, userId: actor.userId, amount: reservation.total, method: input.method, idempotencyKey: input.idempotencyKey });
 
@@ -132,6 +135,7 @@ export async function handleWebhook(providerName: string, rawBody: string, signa
       const payment = await tx.payment.findUnique({ where: { reference: event.data.reference } });
       if (!payment) throw new AppError("NOT_FOUND", "Paiement introuvable.");
       await lockPayment(tx, payment.id);
+      await lockClientOrders(tx, payment.userId);
       const locked = await tx.payment.findUniqueOrThrow({ where: { id: payment.id } });
       if (event.data.amount !== locked.amount) throw new AppError("PAYMENT_AMOUNT_MISMATCH", "Le montant du webhook ne correspond pas au paiement.");
       if (event.type === "payment.succeeded") return applySuccess(tx, locked);
@@ -242,10 +246,19 @@ async function settleInitialPayment(tx: Tx, payment: Payment) {
     }
   }
 
-  // Les lignes du panier correspondant au HOLD converti sont retirées.
-  const holdItems = await tx.holdItem.findMany({ where: { holdId: hold!.id } });
-  for (const h of holdItems) {
-    await tx.cartItem.deleteMany({ where: { cart: { userId: payment.userId }, productId: h.productId, startDate: h.startDate, endDate: h.endDate } });
+  // For an earlier delivery, remove the original cart dates rather than the revised dates on the hold.
+  const bookedItems = reservation.quoteId
+    ? await tx.quoteItem.findMany({ where: { quoteId: reservation.quoteId } })
+    : await tx.holdItem.findMany({ where: { holdId: hold!.id } });
+  for (const item of bookedItems) {
+    const originalStart = "requestedStartDate" in item ? item.requestedStartDate : null;
+    const originalEnd = "requestedEndDate" in item ? item.requestedEndDate : null;
+    await tx.cartItem.deleteMany({
+      where: {
+        cart: { userId: payment.userId }, productId: item.productId, startDate: originalStart ?? item.startDate, endDate: originalEnd ?? item.endDate,
+        ...(originalStart || originalEnd ? { quantity: item.quantity } : {}),
+      },
+    });
   }
 
   await notifyUsers(tx, [payment.userId], { type: "payment.succeeded", title: `Paiement confirmé, réservation ${reservation.reference}`, body: `Votre paiement de ${formatFcfa(payment.amount)} a bien été reçu${payment.provider === "simulated" ? " (paiement simulé)" : ""}.`, link: `/mes-reservations/${reservation.id}` });

@@ -1,5 +1,6 @@
 /**
- * Les dates de location sont des jours calendaires UTC. Une période est l'intervalle semi-ouvert [début, fin).
+ * Les dates de location sont des jours calendaires UTC. La période facturée est l'intervalle semi-ouvert [début, fin).
+ * L'immobilisation physique ajoute le délai de retour défini dans services/availability.ts.
  * Règle de chevauchement du cahier des charges : début demandé < fin existante ET fin demandée > début existant.
  */
 const MS_DAY = 86_400_000;
@@ -22,6 +23,16 @@ export function todayUTC(now: Date = new Date()): Date {
 
 export function addDays(d: Date, n: number): Date {
   return new Date(d.getTime() + n * MS_DAY);
+}
+
+export function eventDeliveryWindow(eventDate: string) {
+  const event = parseDate(eventDate);
+  return {
+    firstDelivery: toISODate(addDays(event, -1)),
+    lastDelivery: eventDate,
+    firstRecovery: eventDate,
+    lastRecovery: toISODate(addDays(event, 1)),
+  };
 }
 
 export function addHours(d: Date, n: number): Date {

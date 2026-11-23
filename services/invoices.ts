@@ -1,3 +1,4 @@
+import { fulfillmentFor } from "@/lib/fulfillment";
 import type { Invoice, InvoiceKind, LenderPaymentMode, Prisma } from "@prisma/client";
 import { db, type Tx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
@@ -6,6 +7,7 @@ import { formatDate } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { can, type Actor } from "@/lib/auth/actor";
 import { notifyUsers } from "./notifications";
+import { readTermsSnapshot } from "./order-snapshot";
 
 /**
  * Facturation. LOC'CONNECT émet les factures au nom et pour le compte de chaque loueur (mandat de facturation) :
@@ -87,12 +89,13 @@ async function parties(tx: Tx, reservationId: string, lenderId: string) {
   const lender = await tx.lender.findUniqueOrThrow({ where: { id: lenderId }, include: { city: true } });
   const platform: InvoiceParty = { name: settings["invoice.company_name"], address: settings["invoice.company_address"], rccm: settings["invoice.company_rccm"], ncc: settings["invoice.company_ncc"], phone: settings["site.support_phone"], email: settings["site.support_email"] };
   const seller = lenderParty(lender);
-  const buyer: InvoiceParty = { name: `${reservation.client.firstName} ${reservation.client.lastName}`, phone: reservation.contactPhone ?? reservation.client.phone, email: reservation.client.email, address: reservation.deliveryAddress ?? reservation.client.deliveryAddress, event: reservation.eventName };
+  const plan = fulfillmentFor(reservation, lenderId);
+  const buyer: InvoiceParty = { name: `${reservation.client.firstName} ${reservation.client.lastName}`, phone: reservation.contactPhone ?? reservation.client.phone, email: reservation.client.email, address: (plan.mode === "DELIVERY" ? reservation.deliveryAddress : null) ?? reservation.client.deliveryAddress, event: reservation.eventName };
   return {
     settings,
     reservation,
     lender,
-    base: { platform, seller, buyer, reservation: { reference: reservation.reference, fulfillment: reservation.fulfillmentType, createdAt: reservation.createdAt.toISOString() } },
+    base: { platform, seller, buyer, reservation: { reference: reservation.reference, fulfillment: plan.mode, createdAt: reservation.createdAt.toISOString() } },
   };
 }
 
@@ -153,6 +156,7 @@ export async function issueRentalInvoices(tx: Tx, reservationId: string, payment
   for (const lenderId of [...new Set(reservation.items.map((i) => i.lenderId))]) {
     const mine = reservation.items.filter((i) => i.lenderId === lenderId);
     const { settings, lender, base } = await parties(tx, reservationId, lenderId);
+    const plan = fulfillmentFor(reservation, lenderId);
     const delivery = reservation.deliveries.find((d) => d.lenderId === lenderId);
     const lines: InvoiceLine[] = mine.map((i) => ({ label: i.productName, detail: period(i.startDate, i.endDate), quantity: i.quantity, days: i.days, unitPrice: i.unitPrice, refundPrice: i.refundPrice, amount: i.subtotal }));
     if (delivery && delivery.fee > 0) lines.push({ label: "Livraison", detail: delivery.address ?? undefined, quantity: 1, unitPrice: delivery.fee, amount: delivery.fee });
@@ -172,8 +176,8 @@ export async function issueRentalInvoices(tx: Tx, reservationId: string, payment
       data: {
         ...base,
         title: INVOICE_TITLE.RENTAL,
-        schedule: scheduleOf(mine, reservation.deliverySlot, reservation.returnSlot, delivery),
-        terms: lender.terms,
+        schedule: scheduleOf(mine, plan.deliverySlot ?? null, plan.returnSlot ?? null, delivery),
+        terms: readTermsSnapshot(reservation.termsSnapshot)?.find((t) => t.lenderId === lenderId)?.terms ?? null,
         acceptedAt: reservation.termsAcceptedAt?.toISOString() ?? null,
         lines,
         deposit: sum(mine.map((i) => i.depositAmount)),

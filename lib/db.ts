@@ -38,3 +38,8 @@ export async function lockPayment(tx: Tx, paymentId: string): Promise<void> {
 export async function lockReservation(tx: Tx, reservationId: string): Promise<void> {
   await tx.$queryRaw`SELECT id FROM "Reservation" WHERE id = ${reservationId} FOR UPDATE`;
 }
+
+/** Sérialise la préparation et le paiement des commandes d'un même client. */
+export async function lockClientOrders(tx: Tx, userId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+}

@@ -1,3 +1,4 @@
+import { fulfillmentFor } from "@/lib/fulfillment";
 import { z } from "zod";
 import type { LenderPaymentMode, Payment, Prisma, ReservationStatus } from "@prisma/client";
 import { db, lockReservation, transaction, type Tx } from "@/lib/db";
@@ -106,6 +107,9 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
       if (!l.productId || !l.quantity || !l.startDate || !l.endDate) throw new AppError("VALIDATION_ERROR", "Produit, quantité et dates sont requis pour ajouter un article.");
       const product = await tx.product.findFirst({ where: { id: l.productId, status: "PUBLISHED", deletedAt: null, lender: { status: "APPROVED" } }, include: { lender: true } });
       if (!product) throw notFound("Produit");
+      if (!reservation.items.some((i) => i.lenderId === product.lenderId)) throw new AppError("MODIFICATION_NOT_ALLOWED", "Pour ajouter un autre loueur, créez une nouvelle commande afin de valider sa livraison et ses conditions.");
+      if (fulfillmentFor(reservation, product.lenderId).mode === "PICKUP" && product.lender.deliveryRequired) throw new AppError("MODIFICATION_NOT_ALLOWED", "Ce loueur impose désormais la livraison. Contactez le support pour modifier la remise et ses frais.");
+      if (fulfillmentFor(reservation, product.lenderId).mode === "DELIVERY" && !product.lender.offersDelivery) throw new AppError("MODIFICATION_NOT_ALLOWED", "Ce loueur ne propose plus la livraison. Contactez le support avant d'ajouter un article.");
       const start = parseDate(l.startDate);
       const end = parseDate(l.endDate);
       validateRentalPeriod(settings, product, { quantity: l.quantity, start, end }, now);
@@ -402,10 +406,11 @@ export async function onModificationPaid(tx: Tx, payment: Payment) {
   try {
     await applyModificationTx(tx, mod.id, payment.userId);
   } catch (e) {
-    if (!(e instanceof AppError) || e.code !== "STOCK_INSUFFICIENT") throw e;
-    await tx.modificationRequest.update({ where: { id: mod.id }, data: { status: "CANCELLED", rejectionReason: "Stock devenu insuffisant, complément remboursé." } });
-    await executeRefund(tx, { payment: { id: payment.id, amount: payment.amount, reservationId: payment.reservationId }, kind: "MODIFICATION", amount: payment.amount, reason: "Modification impossible : stock insuffisant", impacts: [] });
-    await notifyUsers(tx, [mod.clientId], { type: "modification.failed", title: "Modification non appliquée", body: "Le stock n'est plus disponible : votre complément a été remboursé.", link: `/mes-reservations/${payment.reservationId}` });
+    if (!(e instanceof AppError) || !["STOCK_INSUFFICIENT", "MODIFICATION_NOT_ALLOWED"].includes(e.code)) throw e;
+    const reason = e.code === "STOCK_INSUFFICIENT" ? "Stock devenu insuffisant" : "Conditions de remise devenues incompatibles";
+    await tx.modificationRequest.update({ where: { id: mod.id }, data: { status: "CANCELLED", rejectionReason: `${reason}, complément remboursé.` } });
+    await executeRefund(tx, { payment: { id: payment.id, amount: payment.amount, reservationId: payment.reservationId }, kind: "MODIFICATION", amount: payment.amount, reason: `Modification impossible : ${reason.toLowerCase()}`, impacts: [] });
+    await notifyUsers(tx, [mod.clientId], { type: "modification.failed", title: "Modification non appliquée", body: `${reason} : votre complément a été remboursé.`, link: `/mes-reservations/${payment.reservationId}` });
   }
   return { status: "PAID" as const };
 }
@@ -436,6 +441,14 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
   };
   // Contrôle d'inventaire final, avec verrouillage des produits concernés.
   const proposed = mod.lines.filter((l) => l.action !== "REMOVE");
+  if (proposed.some((l) => l.action === "ADD")) {
+    const lender = await tx.lender.findUniqueOrThrow({ where: { id: mod.lenderId } });
+    if (!reservation.items.some((i) => i.lenderId === mod.lenderId)
+      || (fulfillmentFor(reservation, mod.lenderId).mode === "PICKUP" && lender.deliveryRequired)
+      || (fulfillmentFor(reservation, mod.lenderId).mode === "DELIVERY" && !lender.offersDelivery)) {
+      throw new AppError("MODIFICATION_NOT_ALLOWED", "Les conditions de remise ont changé. Contactez le support avant d'appliquer cet ajout.");
+    }
+  }
   await assertAvailable(
     tx,
     proposed.map((l) => ({ productId: l.productId, quantity: l.quantityRequested, start: l.startAfter!, end: l.endAfter! })),
@@ -535,6 +548,15 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
   const cashTotal = await cashTotalFor(tx, reservation.id);
   const fresh = await tx.reservation.findUniqueOrThrow({ where: { id: reservation.id }, include: { items: true } });
   const active = fresh.items.filter((i) => !["CANCELLED", "REFUNDED"].includes(i.status));
+  const lenderItems = active.filter((i) => i.lenderId === mod.lenderId);
+  if (lenderItems.length) {
+    await tx.delivery.updateMany({ where: { reservationId: reservation.id, lenderId: mod.lenderId }, data: {
+      scheduledDate: new Date(Math.min(...lenderItems.map((i) => i.startDate.getTime()))),
+      returnDate: new Date(Math.max(...lenderItems.map((i) => i.endDate.getTime()))),
+    } });
+  } else {
+    await tx.delivery.deleteMany({ where: { reservationId: reservation.id, lenderId: mod.lenderId } });
+  }
   const subtotal = sum(active.map((i) => i.subtotal));
   const depositTotal = sum(active.map((i) => i.depositAmount));
   const commissionTotal = sum(active.map((i) => i.commission)) + (fresh.commissionTotal - sum(reservation.items.filter((i) => !["CANCELLED", "REFUNDED"].includes(i.status)).map((i) => i.commission)));

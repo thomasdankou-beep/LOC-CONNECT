@@ -10,7 +10,7 @@ import { CATEGORY_PHOTO, COVER_PHOTOS, SUBCATEGORY_PHOTOS, unsplash } from "../l
 import { seedSystemData } from "./system";
 import { CATEGORIES, CITIES, CLIENTS, LENDERS, REVIEW_COMMENTS } from "./seed-data";
 import { addToCart } from "../services/cart";
-import { availabilityForProduct, minAvailable } from "../services/availability";
+import { availabilityForProduct, inventoryEnd, minAvailable } from "../services/availability";
 import { createHold, expireHolds } from "../services/holds";
 import { createReservationFromHold, lenderAdvance } from "../services/reservations";
 import { initiatePayment, simulatePayment } from "../services/payments";
@@ -74,7 +74,7 @@ async function shiftBack(reservationId: string, days: number) {
   await run(`UPDATE "FinancialTransaction" SET ${ts("createdAt")} WHERE "reservationId" = '${rid}'`);
   await run(`UPDATE "BalanceEntry" SET ${ts("createdAt")}, ${ts("availableAt")} WHERE "reservationId" = '${rid}'`);
   await run(`UPDATE "Refund" SET ${ts("createdAt")}, "executedAt" = "executedAt" - interval '${d} days' WHERE "reservationId" = '${rid}'`);
-  await run(`UPDATE "Delivery" SET "scheduledDate" = ("scheduledDate" - interval '${d} days')::date, ${ts("createdAt")}, "deliveredAt" = "deliveredAt" - interval '${d} days' WHERE "reservationId" = '${rid}'`);
+  await run(`UPDATE "Delivery" SET "scheduledDate" = ("scheduledDate" - interval '${d} days')::date, "returnDate" = ("returnDate" - interval '${d} days')::date, ${ts("createdAt")}, "deliveredAt" = "deliveredAt" - interval '${d} days' WHERE "reservationId" = '${rid}'`);
   await run(`UPDATE "Deposit" SET ${ts("createdAt")}, "heldAt" = "heldAt" - interval '${d} days', "settledAt" = "settledAt" - interval '${d} days', "releaseDueDate" = "releaseDueDate" - interval '${d} days' WHERE "itemId" IN (SELECT id FROM "ReservationItem" WHERE "reservationId" = '${rid}')`);
   await run(`UPDATE "ReturnReport" SET ${ts("createdAt")}, "settledAt" = "settledAt" - interval '${d} days', "contestDeadline" = "contestDeadline" - interval '${d} days' WHERE "itemId" IN (SELECT id FROM "ReservationItem" WHERE "reservationId" = '${rid}')`);
   await run(`UPDATE "Hold" SET ${ts("createdAt")}, "expiresAt" = "expiresAt" - interval '${d} days' WHERE id IN (SELECT "holdId" FROM "Reservation" WHERE id = '${rid}')`);
@@ -240,7 +240,7 @@ async function main() {
       let start = l.start;
       let quantity = l.quantity;
       for (let tries = 0; tries < 40; tries++) {
-        const free = minAvailable(await availabilityForProduct(db, l.productId, addDays(todayUTC(), start), addDays(todayUTC(), start + length)));
+        const free = minAvailable(await availabilityForProduct(db, l.productId, addDays(todayUTC(), start), inventoryEnd(addDays(todayUTC(), start + length), await getSettings())));
         if (free >= 1) {
           quantity = Math.min(quantity, free);
           break;
@@ -251,7 +251,7 @@ async function main() {
     }
     for (const l of lines) await addToCart(client.id, { productId: l.productId, quantity: l.quantity, startDate: toISODate(addDays(todayUTC(), l.start)), endDate: toISODate(addDays(todayUTC(), l.end)) });
     const user = await db.user.findUniqueOrThrow({ where: { id: client.id } });
-    const hold = await createHold(client.id, { fulfillmentType: opts.delivery ? "DELIVERY" : "PICKUP", deliveryAddress: opts.delivery ? user.deliveryAddress ?? "Rue 12, Cocody" : undefined, deliveryCityId: opts.delivery ? user.cityId ?? undefined : undefined, deliveryZone: opts.delivery ? "Quartier résidentiel" : undefined, contactPhone: user.phone ?? undefined, replaceExisting: true });
+    const hold = await createHold(client.id, { fulfillmentType: opts.delivery ? "DELIVERY" : "PICKUP", deliveryAddress: opts.delivery ? user.deliveryAddress ?? "Rue 12, Cocody" : undefined, deliveryCityId: opts.delivery ? user.cityId ?? undefined : undefined, deliveryZone: opts.delivery ? "Quartier résidentiel" : undefined, contactPhone: user.phone ?? undefined, acceptTerms: true, replaceExisting: true });
     const reservation = await createReservationFromHold(client.id, hold.id);
     const methods = ["ORANGE_MONEY", "MTN_MONEY", "WAVE", "MOOV_MONEY", "CARD"] as const;
     const { payment } = await initiatePayment(client.actor, { reservationId: reservation.id, method: pick([...methods]), idempotencyKey: randomUUID() });
@@ -316,7 +316,7 @@ async function main() {
       const a = lenderActor(lender.lenderId);
       for (const d of await db.delivery.findMany({ where: { reservationId: r.id } })) {
         await lenderAdvance(a, r.id, "READY");
-        for (const status of ["PREPARING", "OUT_FOR_DELIVERY", "DELIVERED"] as const) await updateDelivery(a, d.id, { status, scheduledDate: toISODate(addDays(todayUTC(), 8)), slotStart: "09:00", slotEnd: "12:00" });
+        for (const status of ["PREPARING", "OUT_FOR_DELIVERY", "DELIVERED"] as const) await updateDelivery(a, d.id, { status, scheduledDate: toISODate(d.scheduledDate!), slotStart: "09:00", slotEnd: "12:00" });
       }
     } else {
       await toInUse(r);

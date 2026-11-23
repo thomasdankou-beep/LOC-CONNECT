@@ -15,6 +15,7 @@ import { getSettings } from "@/lib/settings";
 import { depositFloorFrom, depositLabel, depositPercentFrom, effectivePaymentMode } from "@/services/pricing";
 import { commissionRateFor } from "@/services/plans";
 import { BookingPanel } from "@/features/catalog/booking-panel";
+import { returnBufferDays } from "@/services/availability";
 import { Gallery } from "@/features/catalog/gallery";
 import { ProductCard } from "@/features/catalog/product-card";
 import { FavoriteButton } from "@/features/catalog/favorite-button";
@@ -190,6 +191,7 @@ export default async function ProductPage({ params, searchParams }: Props) {
 
         <div>
           <BookingPanel
+            returnBufferDays={returnBufferDays(settings)}
             productId={product.id}
             unitPrice={product.unitPrice}
             deposit={product.depositAmount}
