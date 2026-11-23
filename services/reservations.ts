@@ -13,6 +13,8 @@ import { computeTotals, depositFloorFrom, depositPercentFrom, effectivePaymentMo
 import { notifyLender, notifyUsers } from "./notifications";
 import { assertCashSettled, syncCashSettlement } from "./cash";
 import { commissionRateFor } from "./plans";
+import type { QuoteData } from "./quotes";
+import { parseDate } from "@/lib/dates";
 import { assertQuotePricing, quoteDeliveryFees } from "./order-snapshot";
 
 const RESERVATION_ITEM_INCLUDE = {
@@ -140,6 +142,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
       for (const b of totals.byLender) {
         const plan = fulfillmentFor(hold, b.lenderId);
         if (plan.mode !== "DELIVERY") continue;
+        const schedule = (quote?.data as QuoteData | undefined)?.groups.find((group) => group.lenderId === b.lenderId && group.requestedDates)?.schedule;
         const mine = priced.filter((l) => l.lenderId === b.lenderId);
         await tx.delivery.create({
           data: {
@@ -150,10 +153,10 @@ export async function createReservationFromHold(userId: string, holdId: string, 
             cityId: hold.deliveryCityId,
             zone: hold.deliveryZone,
             fee: b.delivery,
-            scheduledDate: new Date(Math.min(...mine.map((l) => l.start.getTime()))),
+            scheduledDate: schedule ? parseDate(schedule.outDate) : new Date(Math.min(...mine.map((l) => l.start.getTime()))),
             slotStart: splitSlot(plan.deliverySlot)?.start,
             slotEnd: splitSlot(plan.deliverySlot)?.end,
-            returnDate: new Date(Math.max(...mine.map((l) => l.end.getTime()))),
+            returnDate: schedule ? parseDate(schedule.backDate) : new Date(Math.max(...mine.map((l) => l.end.getTime()))),
             returnSlotStart: splitSlot(plan.returnSlot)?.start,
             returnSlotEnd: splitSlot(plan.returnSlot)?.end,
           },

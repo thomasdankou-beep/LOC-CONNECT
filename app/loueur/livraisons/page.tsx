@@ -64,7 +64,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
                     <li key={index}>{item.quantity} × {item.product.name} du {formatDate(item.startDate)} au {formatDate(item.endDate)}</li>
                   ))}
                 </ul>
-                <DeliveryPriceForm quoteId={request.id} outDate={schedule.outDate} backDate={schedule.backDate} eventDate={data.eventDate} preferredOut={schedule.outSlot} preferredBack={schedule.backSlot} />
+                <DeliveryPriceForm quoteId={request.id} outDate={schedule.outDate} backDate={schedule.backDate} eventDate={data.eventDate} requestedDates={data.groups.find((group) => group.lenderId === actor.lenderId)?.requestedDates} preferredOut={schedule.outSlot} preferredBack={schedule.backSlot} />
               </Card>
             );
           })}

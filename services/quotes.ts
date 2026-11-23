@@ -32,6 +32,7 @@ export type QuoteGroup = {
   lenderId: string;
   seller: InvoiceParty;
   fulfillment?: "PICKUP" | "DELIVERY";
+  requestedDates?: { delivery: string; recovery: string };
   schedule?: InvoiceSchedule;
   /** Conditions générales du loueur au moment de la proforma. */
   terms?: string | null;
@@ -117,6 +118,21 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
     const mine = items.filter((i) => i.product.lenderId === b.lenderId);
     const lender = mine[0].product.lender;
     const plan = fulfillmentFor(input, lender.id);
+    const selection = input.lenderFulfillment?.find((entry) => entry.lenderId === lender.id);
+    let requestedDates: QuoteGroup["requestedDates"];
+    if (selection?.preferredDeliveryDate || selection?.preferredReturnDate) {
+      const { preferredDeliveryDate, preferredReturnDate } = selection;
+      const schedule = scheduleOf(mine, null, null);
+      const previousDay = toISODate(addDays(parseDate(schedule.outDate), -1));
+      const lastDay = toISODate(addDays(parseDate(schedule.backDate), -1));
+      if (plan.mode !== "DELIVERY" || !preferredDeliveryDate || !preferredReturnDate
+        || ![previousDay, schedule.outDate].includes(preferredDeliveryDate)
+        || ![lastDay, schedule.backDate].includes(preferredReturnDate)
+        || preferredDeliveryDate < toISODate(now)) {
+        throw new AppError("VALIDATION_ERROR", "Choisissez des jours de livraison et de récupération compatibles avec la période de location.");
+      }
+      requestedDates = { delivery: preferredDeliveryDate, recovery: preferredReturnDate };
+    }
     const lines: InvoiceLine[] = mine.map((i) => {
       const p = priced[items.indexOf(i)];
       return { label: i.product.name, detail: `du ${formatDate(i.startDate)} au ${formatDate(i.endDate)}`, quantity: p.quantity, days: p.days, unitPrice: p.unitPrice, refundPrice: p.refundPrice, amount: p.subtotal };
@@ -124,6 +140,7 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
     if (b.delivery > 0) lines.push({ label: "Transport (livraison et récupération)", detail: address ?? undefined, quantity: 1, unitPrice: b.delivery, amount: b.delivery });
     return {
       lenderId: b.lenderId,
+      ...(requestedDates ? { requestedDates } : {}),
       seller: lenderParty(lender),
       ...(input.lenderFulfillment ? { fulfillment: plan.mode, schedule: scheduleOf(mine, plan.deliverySlot ?? null, plan.returnSlot ?? null) } : {}),
       terms: lender.terms,
@@ -139,12 +156,13 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
   const validUntil = addDays(now, settings["quote.validity_days"]);
   const netToPay = totals.subtotal + totals.deliveryFee + totals.depositTotal;
   const pendingLenderIds = input.fulfillmentType === "DELIVERY"
-    ? [...new Set(items.filter((i) => i.product.lender.deliveryOnQuote && fulfillmentFor(input, i.product.lenderId).mode === "DELIVERY").map((i) => i.product.lenderId))]
+    ? [...new Set(items.filter((i) => (i.product.lender.deliveryOnQuote || groups.some((g) => g.lenderId === i.product.lenderId && g.requestedDates)) && fulfillmentFor(input, i.product.lenderId).mode === "DELIVERY").map((i) => i.product.lenderId))]
     : [];
-  if (pendingLenderIds.length) {
+  const legacyPending = pendingLenderIds.filter((id) => !groups.some((g) => g.lenderId === id && g.requestedDates));
+  if (legacyPending.length) {
     if (!input.eventDate) throw new AppError("VALIDATION_ERROR", "Indiquez la date de l’événement pour demander un devis de livraison.");
     const window = eventDeliveryWindow(input.eventDate);
-    const deliveredItems = items.filter((item) => pendingLenderIds.includes(item.product.lenderId));
+    const deliveredItems = items.filter((item) => legacyPending.includes(item.product.lenderId));
     if (deliveredItems.some((item) => toISODate(item.startDate) < window.firstDelivery || toISODate(item.endDate) > window.lastRecovery)) {
       throw new AppError("VALIDATION_ERROR", "Pour les articles livrés sur devis, choisissez des dates entre la veille de l’événement et le lendemain.");
     }
@@ -322,14 +340,24 @@ export async function confirmDeliveryPrice(actor: DeliveryActor, quoteId: string
     const mine = quote.items.filter((item) => item.product.lenderId === actor.lenderId);
     const first = Math.min(...mine.map((item) => item.startDate.getTime()));
     const last = Math.max(...mine.map((item) => item.endDate.getTime()));
-    if (data.eventDate) {
+    const requestedDates = data.groups.find((group) => group.lenderId === actor.lenderId)?.requestedDates;
+    const lastRentalDay = toISODate(addDays(new Date(last), -1));
+    if (requestedDates) {
+      const firstRentalDay = toISODate(new Date(first));
+      if (![toISODate(addDays(new Date(first), -1)), firstRentalDay].includes(deliveryDate)
+        || ![lastRentalDay, toISODate(new Date(last))].includes(returnDate)
+        || deliveryDate < toISODate(new Date())
+        || (deliveryDate === returnDate && deliverySlot.split("-")[1] > returnSlot.split("-")[0])) {
+        throw new AppError("VALIDATION_ERROR", "Choisissez des jours compatibles avec la location et une récupération après la livraison.");
+      }
+    } else if (data.eventDate) {
       const window = eventDeliveryWindow(data.eventDate);
       if (deliveryDate < window.firstDelivery || deliveryDate > window.lastDelivery
         || returnDate < window.firstRecovery || returnDate > window.lastRecovery) {
         throw new AppError("VALIDATION_ERROR", "Livrez la veille ou le jour de l’événement et récupérez le matériel le jour même ou le lendemain.");
       }
     }
-    if (start.getTime() > first || end.getTime() < last) {
+    if (start.getTime() > first || end.getTime() < (requestedDates ? parseDate(lastRentalDay).getTime() : last)) {
       throw new AppError("VALIDATION_ERROR", "La livraison et la récupération doivent couvrir toute la période demandée.");
     }
     // Reserve stock for any additional time that the client will have the equipment.
@@ -375,7 +403,10 @@ export async function confirmDeliveryPrice(actor: DeliveryActor, quoteId: string
         quantity: 1, unitPrice: breakdown.delivery, amount: breakdown.delivery,
       });
       return {
-        ...group, lines, fulfillment: plan.mode, schedule: scheduleOf(items, plan.deliverySlot ?? null, plan.returnSlot ?? null),
+        ...group, lines, fulfillment: plan.mode,
+        schedule: group.lenderId === actor.lenderId
+          ? { ...scheduleOf(items, deliverySlot, returnSlot), outDate: deliveryDate, backDate: returnDate }
+          : group.schedule ?? scheduleOf(items, plan.deliverySlot ?? null, plan.returnSlot ?? null),
         rental: breakdown.rental, delivery: breakdown.delivery, deposit: breakdown.deposit, cash: breakdown.cash,
       };
     });
