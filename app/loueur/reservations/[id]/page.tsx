@@ -1,3 +1,4 @@
+import { fulfillmentFor } from "@/lib/fulfillment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -43,6 +44,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const lenderTotal = mine.reduce((a, i) => a + i.subtotal, 0);
   const commission = mine.reduce((a, i) => a + i.commission, 0);
   const delivery = r.deliveries[0];
+  const plan = fulfillmentFor(r, actor.lenderId);
   const cash = r.cashSettlements.find((c) => c.status !== "CANCELLED" && c.amountDue > 0);
   const cashMode = mine.some((i) => i.paymentMode === "DEPOSIT_CASH");
   const cashDelivery = cash?.deliveryDue ?? 0;
@@ -59,11 +61,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <h1 className="font-mono text-2xl font-semibold text-ink sm:text-3xl">{r.reference}</h1>
             <StatusBadge entry={RESERVATION_STATUS[r.status]} />
           </div>
-          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {r.eventName ? `${r.eventName} · ` : ""}{FULFILLMENT[r.fulfillmentType]}{slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot) ? ` (${slotSummary(r.fulfillmentType, r.deliverySlot, r.returnSlot)})` : ""}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
+          <p className="mt-1 text-sm text-muted">Créée le {formatDate(r.createdAt)} · {r.eventName ? `${r.eventName} · ` : ""}{FULFILLMENT[plan.mode]}{slotSummary(plan.mode, plan.deliverySlot ?? null, plan.returnSlot ?? null) ? ` (${slotSummary(plan.mode, plan.deliverySlot ?? null, plan.returnSlot ?? null)})` : ""}{r.currentVersion > 1 ? ` · version ${r.currentVersion}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {groups.map((g) => {
-            const to = nextLenderTarget(g.status, r.fulfillmentType, perms);
+            const to = nextLenderTarget(g.status, plan.mode, perms);
             return to ? <AdvanceButton key={g.status} reservationId={r.id} itemIds={g.items.map((i) => i.id)} to={to} /> : null;
           })}
         </div>
@@ -110,7 +112,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <ul className="divide-y divide-line">
               {mine.map((i) => {
                 const report = i.returnReport;
-                const to = nextLenderTarget(i.status, r.fulfillmentType, perms);
+                const to = nextLenderTarget(i.status, plan.mode, perms);
                 return (
                   <li key={i.id} className="p-5">
                     <div className="flex flex-col gap-4 sm:flex-row">

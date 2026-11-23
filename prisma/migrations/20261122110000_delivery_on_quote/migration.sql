@@ -1,0 +1,1 @@
+ALTER TABLE "Lender" ADD COLUMN "deliveryOnQuote" BOOLEAN NOT NULL DEFAULT false;

@@ -1,3 +1,4 @@
+import { fulfillmentFor } from "@/lib/fulfillment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
@@ -19,7 +20,7 @@ export default async function ClientDashboard() {
   const actor = await requireClient();
   const today = todayUTC();
   const [items, deposits, payments, extra, contestable, mods, notifications, holds] = await Promise.all([
-    db.reservationItem.findMany({ where: { reservation: { clientId: actor.userId }, status: { notIn: ["HOLD", "DRAFT", "CANCELLED", "REFUNDED"] } }, include: { reservation: { select: { id: true, reference: true, fulfillmentType: true } }, lender: { select: { companyName: true } } }, orderBy: { startDate: "asc" } }),
+    db.reservationItem.findMany({ where: { reservation: { clientId: actor.userId }, status: { notIn: ["HOLD", "DRAFT", "CANCELLED", "REFUNDED"] } }, include: { reservation: { select: { id: true, reference: true, fulfillmentType: true, lenderFulfillment: true } }, lender: { select: { companyName: true } } }, orderBy: { startDate: "asc" } }),
     db.deposit.aggregate({ where: { status: "HELD", item: { reservation: { clientId: actor.userId } } }, _sum: { amount: true } }),
     db.payment.aggregate({ where: { userId: actor.userId, status: { in: ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"] }, createdAt: { gte: new Date(today.getTime() - 30 * 86_400_000) } }, _sum: { amount: true } }),
     db.extraCharge.findMany({ where: { status: "PENDING", item: { reservation: { clientId: actor.userId } } }, include: { item: { select: { productName: true, reservationId: true } } } }),
@@ -76,7 +77,7 @@ export default async function ClientDashboard() {
                     <div className="min-w-0">
                       <p className="truncate font-medium text-ink">{i.quantity} x {i.productName}</p>
                       <p className="text-sm text-muted">{i.lender.companyName} · {formatDate(i.startDate)} au {formatDate(i.endDate)}</p>
-                      <p className="mt-0.5 text-sm text-royal-ink">{nextActionForClient(i.status, { fulfillment: i.reservation.fulfillmentType })}</p>
+                      <p className="mt-0.5 text-sm text-royal-ink">{nextActionForClient(i.status, { fulfillment: fulfillmentFor(i.reservation, i.lenderId).mode })}</p>
                     </div>
                     <StatusBadge entry={RESERVATION_STATUS[i.status]} />
                   </Link>

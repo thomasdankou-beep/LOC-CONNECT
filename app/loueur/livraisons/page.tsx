@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { DeliveryStatus } from "@prisma/client";
+import { fulfillmentFor } from "@/lib/fulfillment";
+import { scheduleOf } from "@/services/invoices";
 import { can } from "@/lib/auth/actor";
 import { pageLender } from "@/lib/auth/page";
 import { formatDate } from "@/lib/dates";
 import { formatFcfa } from "@/lib/money";
 import { DELIVERY_STATUS } from "@/lib/labels";
+import { listDeliveryPriceRequests, type QuoteData } from "@/services/quotes";
+import { DeliveryPriceForm } from "@/features/lender/delivery-price-form";
 import { listLenderDeliveries } from "@/services/deliveries";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/card";
@@ -32,12 +36,40 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
   const actor = await pageLender("DELIVERY_VIEW");
   const sp = await searchParams;
   const tab = TABS.find((t) => t.key === sp.tab) ?? TABS[0];
-  const result = await listLenderDeliveries(actor.lenderId, { status: tab.status, page: Number(sp.page) || 1 });
   const perms = { update: can(actor, "DELIVERY_UPDATE"), proof: can(actor, "DELIVERY_PROOF_CREATE") };
+  const [result, requests] = await Promise.all([
+    listLenderDeliveries(actor.lenderId, { status: tab.status, page: Number(sp.page) || 1 }),
+    perms.update ? listDeliveryPriceRequests(actor) : [],
+  ]);
 
   return (
     <>
       <PageHeader title="Livraisons" description="Planifiez, suivez et prouvez chaque livraison. Le client est prévenu à chaque changement de statut." />
+      {requests.length > 0 && (
+        <section aria-labelledby="delivery-price-requests" className="mb-6 space-y-3">
+          <h2 id="delivery-price-requests" className="text-lg font-semibold">Tarifs de livraison à confirmer</h2>
+          {requests.map((request) => {
+            const data = request.data as unknown as QuoteData;
+            const plan = fulfillmentFor(request, actor.lenderId);
+            const schedule = scheduleOf(request.items, plan.deliverySlot ?? null, plan.returnSlot ?? null);
+            return (
+              <Card key={request.id} className="p-5">
+                <h3 className="font-semibold">{request.number}{data.buyer.event ? ` · ${data.buyer.event}` : ""}</h3>
+                <p className="text-sm text-muted">{data.buyer.address}</p>
+                {data.eventDate && <p className="text-sm text-muted">Événement le {formatDate(new Date(data.eventDate))}</p>}
+                <p className="text-sm text-muted">Réponse attendue avant le {formatDate(request.validUntil)}</p>
+                <p className="text-sm text-muted">Créneaux demandés · livraison {schedule.outSlot ?? "à convenir"} · récupération {schedule.backSlot ?? "à convenir"}</p>
+                <ul className="mt-2 text-sm">
+                  {request.items.map((item, index) => (
+                    <li key={index}>{item.quantity} × {item.product.name} du {formatDate(item.startDate)} au {formatDate(item.endDate)}</li>
+                  ))}
+                </ul>
+                <DeliveryPriceForm quoteId={request.id} outDate={schedule.outDate} backDate={schedule.backDate} eventDate={data.eventDate} preferredOut={schedule.outSlot} preferredBack={schedule.backSlot} />
+              </Card>
+            );
+          })}
+        </section>
+      )}
       <Tabs items={TABS.map((t) => ({ key: t.key, label: t.label, href: `/loueur/livraisons?tab=${t.key}` }))} active={tab.key} />
       {result.rows.length === 0 ? (
         <EmptyState icon={<Truck size={28} />} title="Aucune livraison" description="Les commandes avec livraison apparaissent ici une fois payées." />
@@ -72,7 +104,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
                   </p>
                 ))}
                 <div className="mt-4 border-t border-line pt-4">
-                  <DeliveryControls id={d.id} status={d.status} scheduledDate={d.scheduledDate ? toISODate(d.scheduledDate) : null} slotStart={d.slotStart} slotEnd={d.slotEnd} itemsReady={d.reservation.items.some((i) => i.status === "READY")} perms={perms} />
+                  <DeliveryControls id={d.id} status={d.status} scheduledDate={d.scheduledDate ? toISODate(d.scheduledDate) : null} slotStart={d.slotStart} slotEnd={d.slotEnd} returnDate={d.returnDate ? toISODate(d.returnDate) : null} returnSlotStart={d.returnSlotStart} returnSlotEnd={d.returnSlotEnd} itemsReady={d.reservation.items.some((i) => i.status === "READY")} perms={perms} />
                 </div>
               </Card>
             </li>

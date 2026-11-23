@@ -1,3 +1,4 @@
+import { fulfillmentFor } from "@/lib/fulfillment";
 import { z } from "zod";
 import type { LenderPaymentMode, Payment, Prisma, ReservationStatus } from "@prisma/client";
 import { db, lockReservation, transaction, type Tx } from "@/lib/db";
@@ -107,8 +108,8 @@ export async function planModification(tx: Tx | typeof db, settings: Settings, c
       const product = await tx.product.findFirst({ where: { id: l.productId, status: "PUBLISHED", deletedAt: null, lender: { status: "APPROVED" } }, include: { lender: true } });
       if (!product) throw notFound("Produit");
       if (!reservation.items.some((i) => i.lenderId === product.lenderId)) throw new AppError("MODIFICATION_NOT_ALLOWED", "Pour ajouter un autre loueur, créez une nouvelle commande afin de valider sa livraison et ses conditions.");
-      if (reservation.fulfillmentType === "PICKUP" && product.lender.deliveryRequired) throw new AppError("MODIFICATION_NOT_ALLOWED", "Ce loueur impose désormais la livraison. Contactez le support pour modifier la remise et ses frais.");
-      if (reservation.fulfillmentType === "DELIVERY" && !product.lender.offersDelivery) throw new AppError("MODIFICATION_NOT_ALLOWED", "Ce loueur ne propose plus la livraison. Contactez le support avant d'ajouter un article.");
+      if (fulfillmentFor(reservation, product.lenderId).mode === "PICKUP" && product.lender.deliveryRequired) throw new AppError("MODIFICATION_NOT_ALLOWED", "Ce loueur impose désormais la livraison. Contactez le support pour modifier la remise et ses frais.");
+      if (fulfillmentFor(reservation, product.lenderId).mode === "DELIVERY" && !product.lender.offersDelivery) throw new AppError("MODIFICATION_NOT_ALLOWED", "Ce loueur ne propose plus la livraison. Contactez le support avant d'ajouter un article.");
       const start = parseDate(l.startDate);
       const end = parseDate(l.endDate);
       validateRentalPeriod(settings, product, { quantity: l.quantity, start, end }, now);
@@ -443,8 +444,8 @@ async function applyModificationTx(tx: Tx, modificationId: string, actorId: stri
   if (proposed.some((l) => l.action === "ADD")) {
     const lender = await tx.lender.findUniqueOrThrow({ where: { id: mod.lenderId } });
     if (!reservation.items.some((i) => i.lenderId === mod.lenderId)
-      || (reservation.fulfillmentType === "PICKUP" && lender.deliveryRequired)
-      || (reservation.fulfillmentType === "DELIVERY" && !lender.offersDelivery)) {
+      || (fulfillmentFor(reservation, mod.lenderId).mode === "PICKUP" && lender.deliveryRequired)
+      || (fulfillmentFor(reservation, mod.lenderId).mode === "DELIVERY" && !lender.offersDelivery)) {
       throw new AppError("MODIFICATION_NOT_ALLOWED", "Les conditions de remise ont changé. Contactez le support avant d'appliquer cet ajout.");
     }
   }

@@ -21,7 +21,7 @@ const NEXT: Record<DeliveryStatus, { to: DeliveryStatus; label: string; variant:
 
 type Perms = { update: boolean; proof: boolean };
 
-export function DeliveryControls({ id, status, scheduledDate, slotStart, slotEnd, itemsReady, perms }: { id: string; status: DeliveryStatus; scheduledDate: string | null; slotStart: string | null; slotEnd: string | null; itemsReady: boolean; perms: Perms }) {
+export function DeliveryControls({ id, status, scheduledDate, slotStart, slotEnd, returnDate, returnSlotStart, returnSlotEnd, itemsReady, perms }: { id: string; status: DeliveryStatus; scheduledDate: string | null; slotStart: string | null; slotEnd: string | null; returnDate: string | null; returnSlotStart: string | null; returnSlotEnd: string | null; itemsReady: boolean; perms: Perms }) {
   return (
     <div className="flex flex-wrap gap-2">
       {perms.update && NEXT[status].map((n) => (
@@ -37,17 +37,22 @@ export function DeliveryControls({ id, status, scheduledDate, slotStart, slotEnd
           confirm={n.to === "FAILED" ? { title: "Déclarer un échec de livraison ?", description: "Le client est prévenu et vous pourrez reprogrammer la livraison.", confirmLabel: "Déclarer l'échec" } : undefined}
         />
       ))}
-      {perms.update && status !== "DELIVERED" && status !== "RETURNED" && (
+      {perms.update && status !== "RETURNED" && (
         <FormAction
           endpoint={`/api/deliveries/${id}`}
           method="PATCH"
           label="Planifier"
-          title="Planifier la livraison"
-          description="Date et créneau annoncés au client."
+          title="Planifier la livraison et la récupération"
+          description="Créneaux annoncés au client pour les dates de location."
           fields={[
-            { name: "scheduledDate", label: "Date de livraison", type: "date", required: true, defaultValue: scheduledDate ?? "" },
-            { name: "slotStart", label: "Début du créneau (HH:MM)", placeholder: "09:00", defaultValue: slotStart ?? "" },
-            { name: "slotEnd", label: "Fin du créneau (HH:MM)", placeholder: "12:00", defaultValue: slotEnd ?? "" },
+            ...(status === "DELIVERED" ? [] : [
+              { name: "scheduledDate", label: "Date de livraison", type: "date" as const, required: true, defaultValue: scheduledDate ?? "" },
+              { name: "slotStart", label: "Début du créneau (HH:MM)", placeholder: "09:00", defaultValue: slotStart ?? "" },
+              { name: "slotEnd", label: "Fin du créneau (HH:MM)", placeholder: "12:00", defaultValue: slotEnd ?? "" },
+            ]),
+            { name: "returnDate", label: "Date de récupération", type: "date", defaultValue: returnDate ?? "" },
+            { name: "returnSlotStart", label: "Récupération · début (HH:MM)", placeholder: "08:00", defaultValue: returnSlotStart ?? "" },
+            { name: "returnSlotEnd", label: "Récupération · fin (HH:MM)", placeholder: "10:00", defaultValue: returnSlotEnd ?? "" },
             { name: "notes", label: "Note", type: "textarea" },
           ]}
           submitLabel="Enregistrer"

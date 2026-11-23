@@ -22,8 +22,8 @@ export async function QuoteList({ actor }: { actor: Actor }) {
           { header: "État", cell: (q) => <StatusBadge entry={QUOTE_STATUS[q.status]} /> },
           { header: "Date", cell: (q) => formatDate(q.createdAt) },
           { header: "Valable jusqu'au", cell: (q) => formatDate(q.validUntil) },
-          { header: "Net à payer", align: "right" as const, cell: (q) => <span className="tabular-nums">{formatFcfa(q.netToPay)}</span> },
-          { header: "", cell: (q) => <Link href={`/proformas/${q.id}`} className="text-sm font-medium text-royal-ink hover:underline">{q.status === "OPEN" ? "Voir et payer" : "Voir et imprimer"}</Link> },
+          { header: "Net à payer", align: "right" as const, cell: (q) => <span className="tabular-nums">{(q.data as { deliveryApproval?: { pendingLenderIds: string[] } }).deliveryApproval?.pendingLenderIds.length ? "À confirmer" : formatFcfa(q.netToPay)}</span> },
+          { header: "", cell: (q) => <Link href={`/proformas/${q.id}`} className="text-sm font-medium text-royal-ink hover:underline">{q.status === "OPEN" ? "Voir et payer" : "Voir le détail"}</Link> },
         ]}
       />
     </section>

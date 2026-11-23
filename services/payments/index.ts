@@ -246,10 +246,19 @@ async function settleInitialPayment(tx: Tx, payment: Payment) {
     }
   }
 
-  // Les lignes du panier correspondant au HOLD converti sont retirées.
-  const holdItems = await tx.holdItem.findMany({ where: { holdId: hold!.id } });
-  for (const h of holdItems) {
-    await tx.cartItem.deleteMany({ where: { cart: { userId: payment.userId }, productId: h.productId, startDate: h.startDate, endDate: h.endDate } });
+  // For an earlier delivery, remove the original cart dates rather than the revised dates on the hold.
+  const bookedItems = reservation.quoteId
+    ? await tx.quoteItem.findMany({ where: { quoteId: reservation.quoteId } })
+    : await tx.holdItem.findMany({ where: { holdId: hold!.id } });
+  for (const item of bookedItems) {
+    const originalStart = "requestedStartDate" in item ? item.requestedStartDate : null;
+    const originalEnd = "requestedEndDate" in item ? item.requestedEndDate : null;
+    await tx.cartItem.deleteMany({
+      where: {
+        cart: { userId: payment.userId }, productId: item.productId, startDate: originalStart ?? item.startDate, endDate: originalEnd ?? item.endDate,
+        ...(originalStart || originalEnd ? { quantity: item.quantity } : {}),
+      },
+    });
   }
 
   await notifyUsers(tx, [payment.userId], { type: "payment.succeeded", title: `Paiement confirmé, réservation ${reservation.reference}`, body: `Votre paiement de ${formatFcfa(payment.amount)} a bien été reçu${payment.provider === "simulated" ? " (paiement simulé)" : ""}.`, link: `/mes-reservations/${reservation.id}` });

@@ -4,6 +4,7 @@ import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { reference } from "@/lib/ids";
 import { getSettings, type Settings } from "@/lib/settings";
+import { fulfillmentFor, validateLenderFulfillment, type LenderFulfillment } from "@/lib/fulfillment";
 import { splitSlot } from "@/lib/slots";
 import { assertTransition, aggregateStatus } from "@/lib/state-machine";
 import { can, type Actor } from "@/lib/auth/actor";
@@ -12,7 +13,7 @@ import { computeTotals, depositFloorFrom, depositPercentFrom, effectivePaymentMo
 import { notifyLender, notifyUsers } from "./notifications";
 import { assertCashSettled, syncCashSettlement } from "./cash";
 import { commissionRateFor } from "./plans";
-import { assertQuotePricing } from "./order-snapshot";
+import { assertQuotePricing, quoteDeliveryFees } from "./order-snapshot";
 
 const RESERVATION_ITEM_INCLUDE = {
   product: { select: { id: true, slug: true, name: true, photos: { orderBy: { position: "asc" as const }, take: 1 } } },
@@ -29,24 +30,14 @@ type OrderLine = { productId: string; quantity: number; startDate: Date; endDate
  * Chiffrage d'une commande aux prix actuels : lignes, livraison par loueur et totaux. Partagé par la réservation et la proforma,
  * pour qu'une proforma payée donne exactement les mêmes montants. Refuse la livraison si un loueur ne livre pas.
  */
-export function priceOrder(settings: Settings, items: OrderLine[], fulfillment: FulfillmentType, deliveryCityId: string | null | undefined): { priced: PricedLine[]; terms: Map<string, LenderDeliveryTerms>; totals: Totals } {
+export function priceOrder(settings: Settings, items: OrderLine[], fulfillment: FulfillmentType, deliveryCityId: string | null | undefined, deliveryFees: ReadonlyMap<string, number> = new Map(), lenderFulfillment?: LenderFulfillment | null): { priced: PricedLine[]; terms: Map<string, LenderDeliveryTerms>; totals: Totals } {
+  const order = { fulfillmentType: fulfillment, lenderFulfillment };
+  validateLenderFulfillment(items.map((item) => item.product.lender), order);
   const terms = new Map<string, LenderDeliveryTerms>();
   for (const i of items) {
     const l = i.product.lender;
-    terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, feeLocal: l.deliveryFeeLocal, feeRemote: l.deliveryFeeRemote, commissionRateBps: commissionRateFor(l, settings), paymentMode: effectivePaymentMode(l, settings) });
-  }
-  if (items.some((i) => i.product.lender.deliveryRequired) && [...terms.values()].some((t) => !t.offersDelivery)) throw new AppError("VALIDATION_ERROR", "Ce panier mélange livraison obligatoire et retrait uniquement. Séparez les articles livrés et les articles à retirer en deux commandes.");
-  if (fulfillment !== "DELIVERY") {
-    const required = items.find((i) => i.product.lender.deliveryRequired);
-    if (required) throw new AppError("VALIDATION_ERROR", `${required.product.lender.companyName} livre obligatoirement son matériel. Choisissez la livraison pour cette commande.`);
-  }
-  if (fulfillment === "DELIVERY") {
-    for (const t of terms.values()) {
-      if (!t.offersDelivery) {
-        const name = items.find((i) => i.product.lenderId === t.lenderId)!.product.lender.companyName;
-        throw new AppError("VALIDATION_ERROR", `${name} ne propose pas la livraison. Choisissez le retrait pour cette commande.`);
-      }
-    }
+    const fee = deliveryFees.get(l.id);
+    terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, fulfillment: fulfillmentFor(order, l.id).mode, feeLocal: fee ?? l.deliveryFeeLocal, feeRemote: fee ?? l.deliveryFeeRemote, commissionRateBps: commissionRateFor(l, settings), paymentMode: effectivePaymentMode(l, settings) });
   }
   const priced = items.map((i) =>
     priceLine({ productId: i.productId, lenderId: i.product.lenderId, quantity: i.quantity, start: i.startDate, end: i.endDate, unitPrice: i.product.unitPrice, depositAmount: i.product.depositAmount, refundPrice: i.product.refundPrice, commissionRateBps: terms.get(i.product.lenderId)!.commissionRateBps, paymentMode: terms.get(i.product.lenderId)!.paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings), depositFloorPercent: depositFloorFrom(settings) }),
@@ -83,13 +74,13 @@ export async function createReservationFromHold(userId: string, holdId: string, 
     }
     await assertAvailable(tx, hold.items.map((i) => ({ productId: i.productId, quantity: i.quantity, start: i.startDate, end: i.endDate })), { excludeHoldId: hold.id });
 
-    const { priced, totals } = priceOrder(settings, hold.items, hold.fulfillmentType, hold.deliveryCityId);
-    if (hold.quoteId) {
-      // Une proforma se paie au montant annoncé, ou pas du tout.
-      const quote = await tx.quote.findUnique({ where: { id: hold.quoteId } });
-      if (!quote || quote.validUntil <= now) throw new AppError("QUOTE_EXPIRED", "Cette proforma a expiré. Demandez-en une nouvelle.");
-      assertQuotePricing(quote, priced, totals, hold.items);
+    const quote = hold.quoteId ? await tx.quote.findUnique({ where: { id: hold.quoteId } }) : null;
+    if (hold.quoteId && (!quote || quote.validUntil <= now)) throw new AppError("QUOTE_EXPIRED", "Cette proforma a expiré. Demandez-en une nouvelle.");
+    if (!quote && hold.fulfillmentType === "DELIVERY" && hold.items.some((i) => i.product.lender.deliveryOnQuote && fulfillmentFor(hold, i.product.lenderId).mode === "DELIVERY")) {
+      throw new AppError("VALIDATION_ERROR", "Demandez une proforma pour obtenir le tarif de livraison du loueur.");
     }
+    const { priced, totals } = priceOrder(settings, hold.items, hold.fulfillmentType, hold.deliveryCityId, quoteDeliveryFees(quote?.data), hold.lenderFulfillment as LenderFulfillment | null);
+    if (quote) assertQuotePricing(quote, priced, totals, hold.items);
 
     let ref = reference("LC");
     while (await tx.reservation.findUnique({ where: { reference: ref } })) ref = reference("LC");
@@ -100,6 +91,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
         clientId: userId,
         status: "HOLD",
         fulfillmentType: hold.fulfillmentType,
+        lenderFulfillment: hold.lenderFulfillment == null ? undefined : hold.lenderFulfillment as Prisma.InputJsonValue,
         deliveryAddress: hold.deliveryAddress,
         deliveryCityId: hold.deliveryCityId,
         deliveryZone: hold.deliveryZone,
@@ -146,6 +138,8 @@ export async function createReservationFromHold(userId: string, holdId: string, 
     });
     if (hold.fulfillmentType === "DELIVERY") {
       for (const b of totals.byLender) {
+        const plan = fulfillmentFor(hold, b.lenderId);
+        if (plan.mode !== "DELIVERY") continue;
         const mine = priced.filter((l) => l.lenderId === b.lenderId);
         await tx.delivery.create({
           data: {
@@ -157,11 +151,11 @@ export async function createReservationFromHold(userId: string, holdId: string, 
             zone: hold.deliveryZone,
             fee: b.delivery,
             scheduledDate: new Date(Math.min(...mine.map((l) => l.start.getTime()))),
-            slotStart: splitSlot(hold.deliverySlot)?.start,
-            slotEnd: splitSlot(hold.deliverySlot)?.end,
+            slotStart: splitSlot(plan.deliverySlot)?.start,
+            slotEnd: splitSlot(plan.deliverySlot)?.end,
             returnDate: new Date(Math.max(...mine.map((l) => l.end.getTime()))),
-            returnSlotStart: splitSlot(hold.returnSlot)?.start,
-            returnSlotEnd: splitSlot(hold.returnSlot)?.end,
+            returnSlotStart: splitSlot(plan.returnSlot)?.start,
+            returnSlotEnd: splitSlot(plan.returnSlot)?.end,
           },
         });
       }
@@ -176,7 +170,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
   });
 }
 
-export function snapshotOf(r: { reference: string; total: number; depositTotal: number; commissionTotal: number; subtotal: number; deliveryFee: number; fulfillmentType: string; items: { id: string; productId: string; productName: string; quantity: number; startDate: Date; endDate: Date; unitPrice: number; subtotal: number; commission: number; depositAmount: number; status: string }[] }) {
+export function snapshotOf(r: { reference: string; total: number; depositTotal: number; commissionTotal: number; subtotal: number; deliveryFee: number; fulfillmentType: string; lenderFulfillment?: Prisma.JsonValue; items: { id: string; productId: string; productName: string; quantity: number; startDate: Date; endDate: Date; unitPrice: number; subtotal: number; commission: number; depositAmount: number; status: string }[] }) {
   return {
     reference: r.reference,
     total: r.total,
@@ -185,6 +179,7 @@ export function snapshotOf(r: { reference: string; total: number; depositTotal: 
     subtotal: r.subtotal,
     deliveryFee: r.deliveryFee,
     fulfillmentType: r.fulfillmentType,
+    ...(r.lenderFulfillment ? { lenderFulfillment: r.lenderFulfillment } : {}),
     items: r.items.map((i) => ({ id: i.id, productId: i.productId, productName: i.productName, quantity: i.quantity, startDate: i.startDate.toISOString().slice(0, 10), endDate: i.endDate.toISOString().slice(0, 10), unitPrice: i.unitPrice, subtotal: i.subtotal, commission: i.commission, depositAmount: i.depositAmount, status: i.status })),
   };
 }
@@ -302,7 +297,7 @@ export async function listLenderReservations(lenderId: string, opts: { status?: 
     db.reservationItem.count({ where }),
     db.reservationItem.findMany({
       where,
-      include: { reservation: { select: { id: true, reference: true, fulfillmentType: true, client: { select: { firstName: true, lastName: true } } } }, deposit: true },
+      include: { reservation: { select: { id: true, reference: true, fulfillmentType: true, lenderFulfillment: true, client: { select: { firstName: true, lastName: true } } } }, deposit: true },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -335,7 +330,7 @@ export async function lenderAdvance(actor: Actor & { lenderId: string }, reserva
     await lockReservation(tx, reservationId);
     const reservation = await tx.reservation.findUniqueOrThrow({ where: { id: reservationId } });
     if (to === "IN_USE") await assertCashSettled(tx, reservationId, actor.lenderId);
-    if (to === "IN_USE" && reservation.fulfillmentType === "DELIVERY") {
+    if (to === "IN_USE" && fulfillmentFor(reservation, actor.lenderId).mode === "DELIVERY") {
       const items = await tx.reservationItem.findMany({ where: { reservationId, lenderId: actor.lenderId, ...(itemIds ? { id: { in: itemIds } } : {}) } });
       if (items.some((i) => i.status === "READY")) throw new AppError("INVALID_TRANSITION", "Cette commande est en livraison : utilisez le suivi de livraison.");
     }

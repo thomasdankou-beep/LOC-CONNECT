@@ -95,6 +95,18 @@ export async function updateDelivery(actor: Actor & { lenderId: string }, delive
       await notifyUsers(tx, [delivery.reservation.clientId], { type: "delivery.updated", title: `Livraison ${delivery.reservation.reference}`, body: DELIVERY_MESSAGES[input.status], link: `/mes-reservations/${reservationId}` });
     }
     const updated = await tx.delivery.update({ where: { id: deliveryId }, data });
+    const scheduleChanged = updated.scheduledDate?.getTime() !== current.scheduledDate?.getTime()
+      || updated.returnDate?.getTime() !== current.returnDate?.getTime()
+      || updated.slotStart !== current.slotStart || updated.slotEnd !== current.slotEnd
+      || updated.returnSlotStart !== current.returnSlotStart || updated.returnSlotEnd !== current.returnSlotEnd;
+    if (scheduleChanged) {
+      await notifyUsers(tx, [reservation.clientId], {
+        type: "delivery.schedule_updated",
+        title: `Créneaux mis à jour · ${reservation.reference}`,
+        body: "Le loueur a mis à jour les horaires de livraison ou de récupération. Consultez le suivi de la commande.",
+        link: `/mes-reservations/${reservation.id}`,
+      });
+    }
     await audit(tx, { userId: actor.userId, lenderId: actor.lenderId, action: "delivery.update", entity: "Delivery", entityId: deliveryId, oldValue: { status: delivery.status }, newValue: input, meta: actor.meta });
     return updated;
   });

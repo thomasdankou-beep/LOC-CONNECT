@@ -1,3 +1,4 @@
+import { fulfillmentFor } from "@/lib/fulfillment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReservationStatus } from "@prisma/client";
@@ -66,7 +67,7 @@ async function ReservationsTable({ lenderId, tab, q, page }: { lenderId: string;
           { header: "Client", cell: (i) => `${i.reservation.client.firstName} ${i.reservation.client.lastName.slice(0, 1)}.` },
           { header: "Produit", cell: (i) => <span className="block max-w-56 truncate">{i.quantity} x {i.productName}</span> },
           { header: "Période", cell: (i) => <span className="whitespace-nowrap">{formatDate(i.startDate)} au {formatDate(i.endDate)}</span> },
-          { header: "Mode", cell: (i) => (i.reservation.fulfillmentType === "DELIVERY" ? "Livraison" : "Retrait") },
+          { header: "Mode", cell: (i) => (fulfillmentFor(i.reservation, i.lenderId).mode === "DELIVERY" ? "Livraison" : "Retrait") },
           { header: "Montant", align: "right", cell: (i) => formatFcfa(i.subtotal) },
           { header: "Statut", cell: (i) => <StatusBadge entry={RESERVATION_STATUS[i.status]} /> },
         ]}

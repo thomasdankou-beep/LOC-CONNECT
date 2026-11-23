@@ -21,6 +21,23 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   });
   if (!r) notFound();
   const { quote, data, status } = r;
+  if (status === "AWAITING_DELIVERY" || (status === "EXPIRED" && data.deliveryApproval?.pendingLenderIds.length)) {
+    const pendingLenders = data.groups.filter((group) => data.deliveryApproval?.pendingLenderIds.includes(group.lenderId));
+    return (
+      <main className="mx-auto max-w-2xl space-y-4 p-6">
+        <h1 className="text-2xl font-bold">Demande {quote.number}</h1>
+        {status === "EXPIRED" ? (
+          <p>Cette demande a expiré. Vous pouvez demander un nouveau tarif depuis votre panier.</p>
+        ) : (
+          <>
+            <p>Tarifs de livraison attendus de {pendingLenders.map((group) => group.seller.name).join(", ")}.</p>
+            <p>Le client recevra une notification dès que la proforma sera prête à être validée.</p>
+          </>
+        )}
+        <Link className="underline" href={actor.accountType === "CLIENT" ? "/mes-factures" : "/admin/reservations"}>Retour</Link>
+      </main>
+    );
+  }
   const paid = quote.reservations.find((x) => !["DRAFT", "HOLD", "PENDING_PAYMENT", "CANCELLED"].includes(x.status));
 
   const banner =

@@ -67,8 +67,9 @@ export function QuoteDocument({ number, createdAt, validUntil, acceptedAt, data,
             <h1 className="text-[20px] font-bold uppercase tracking-wide text-[#0f1b3d]">Proforma</h1>
             <p className="mt-1 text-[14px] font-semibold">N° {number}</p>
             <p>Date : {formatDate(createdAt)}</p>
+            {data.eventDate && <p>Événement le {formatDate(new Date(data.eventDate))}</p>}
             <p>Valable jusqu&apos;au {formatDate(validUntil)}</p>
-            <ScheduleLines schedule={data.schedule} fulfillment={data.fulfillment} />
+            {!data.groups.some((group) => group.schedule) && <ScheduleLines schedule={data.schedule} fulfillment={data.fulfillment} />}
           </div>
         </div>
 
@@ -79,6 +80,13 @@ export function QuoteDocument({ number, createdAt, validUntil, acceptedAt, data,
         {data.groups.map((g, gi) => (
           <section key={gi} className="mt-5">
             {!single && <h2 className="text-[13px] font-semibold text-[#0f1b3d]">{g.seller.name}{g.seller.phone ? <span className="font-normal text-[#5b6478]"> · {g.seller.phone}</span> : null}</h2>}
+            {g.fulfillment && g.schedule && (
+              <div className="mt-1 text-[11px] text-[#5b6478]">
+                <p>{g.fulfillment === "DELIVERY" ? "Livraison et récupération" : `Retrait et retour au dépôt${g.seller.address ? ` · ${g.seller.address}` : ""}`}</p>
+                <ScheduleLines schedule={g.schedule} fulfillment={g.fulfillment} />
+                {g.fulfillment === "DELIVERY" && <p>Créneaux en heure locale du lieu de livraison.</p>}
+              </div>
+            )}
             <table className="mt-2 w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-[#0f1b3d] text-[10px] uppercase tracking-[0.06em] text-[#5b6478]">

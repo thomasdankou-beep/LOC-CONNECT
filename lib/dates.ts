@@ -25,6 +25,16 @@ export function addDays(d: Date, n: number): Date {
   return new Date(d.getTime() + n * MS_DAY);
 }
 
+export function eventDeliveryWindow(eventDate: string) {
+  const event = parseDate(eventDate);
+  return {
+    firstDelivery: toISODate(addDays(event, -1)),
+    lastDelivery: eventDate,
+    firstRecovery: eventDate,
+    lastRecovery: toISODate(addDays(event, 1)),
+  };
+}
+
 export function addHours(d: Date, n: number): Date {
   return new Date(d.getTime() + n * 3_600_000);
 }

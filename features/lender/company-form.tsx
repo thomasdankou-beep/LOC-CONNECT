@@ -8,7 +8,7 @@ import { Checkbox, Input, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/states";
 import { LogoUploader } from "./logo-uploader";
 
-type Company = { companyName: string; description: string; phone: string; email: string; address: string; offersDelivery: boolean; deliveryRequired: boolean; deliveryFeeLocal: number; deliveryFeeRemote: number; rccm: string; taxNumber: string; vatRegistered: boolean; shareCapital: number | null; postalAddress: string; terms: string; logoUrl: string | null };
+type Company = { companyName: string; description: string; phone: string; email: string; address: string; offersDelivery: boolean; deliveryRequired: boolean; deliveryOnQuote: boolean; deliveryFeeLocal: number; deliveryFeeRemote: number; rccm: string; taxNumber: string; vatRegistered: boolean; shareCapital: number | null; postalAddress: string; terms: string; logoUrl: string | null };
 
 export function CompanyForm({ company, canEdit }: { company: Company; canEdit: boolean }) {
   const { run, pending, error } = useAction();
@@ -20,7 +20,7 @@ export function CompanyForm({ company, canEdit }: { company: Company; canEdit: b
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const str = (k: string) => String(fd.get(k) ?? "").trim();
-    await run("/api/lenders/me", { method: "PATCH", body: { companyName: str("companyName"), description: str("description"), phone: str("phone"), email: str("email") || undefined, address: str("address"), offersDelivery: delivery, deliveryRequired: delivery && required, deliveryFeeLocal: Number(str("deliveryFeeLocal") || 0), deliveryFeeRemote: Number(str("deliveryFeeRemote") || 0), rccm: str("rccm"), taxNumber: str("taxNumber"), vatRegistered: vat, shareCapital: str("shareCapital") ? Number(str("shareCapital")) : null, postalAddress: str("postalAddress"), terms: str("terms") } }, { success: "Entreprise mise à jour", silentError: true });
+    await run("/api/lenders/me", { method: "PATCH", body: { companyName: str("companyName"), description: str("description"), phone: str("phone"), email: str("email") || undefined, address: str("address"), offersDelivery: delivery, deliveryRequired: delivery && required, deliveryOnQuote: delivery && str("deliveryOnQuote") === "on", deliveryFeeLocal: Number(str("deliveryFeeLocal") || 0), deliveryFeeRemote: Number(str("deliveryFeeRemote") || 0), rccm: str("rccm"), taxNumber: str("taxNumber"), vatRegistered: vat, shareCapital: str("shareCapital") ? Number(str("shareCapital")) : null, postalAddress: str("postalAddress"), terms: str("terms") } }, { success: "Entreprise mise à jour", silentError: true });
   }
   const fe = (n: string) => error?.details?.find((d) => d.path === n)?.message;
 
@@ -45,6 +45,7 @@ export function CompanyForm({ company, canEdit }: { company: Company; canEdit: b
             )}
             {delivery && (
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <Checkbox label="Confirmer le tarif de livraison pour chaque commande" name="deliveryOnQuote" defaultChecked={company.deliveryOnQuote} />
                 <Input label="Frais de livraison, même ville (FCFA)" name="deliveryFeeLocal" type="number" min={0} defaultValue={company.deliveryFeeLocal} error={fe("deliveryFeeLocal")} />
                 <Input label="Frais de livraison, autre ville (FCFA)" name="deliveryFeeRemote" type="number" min={0} defaultValue={company.deliveryFeeRemote} error={fe("deliveryFeeRemote")} />
               </div>

@@ -1,3 +1,4 @@
+import { isMixedFulfillment } from "@/lib/fulfillment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireClient } from "@/lib/auth/actor";
@@ -48,7 +49,7 @@ export default async function MyReservations({ searchParams }: { searchParams: P
                       </div>
                       <p className="mt-1.5 truncate text-[15px] text-ink">{r.items.map((i) => `${i.quantity} x ${i.productName}`).join(", ")}</p>
                       <p className="mt-0.5 text-sm text-muted">{lenders.join(", ")} · du {first ? formatDate(first.startDate) : ""} · {formatDate(r.createdAt)}</p>
-                      <p className="mt-1 text-sm text-royal-ink">{nextActionForClient(r.status, { fulfillment: r.fulfillmentType })}</p>
+                      <p className="mt-1 text-sm text-royal-ink">{isMixedFulfillment(r) ? "Livraison et retrait · voir le suivi par loueur" : nextActionForClient(r.status, { fulfillment: r.fulfillmentType })}</p>
                     </div>
                     <div className="text-left sm:text-right">
                       <p className="text-lg font-semibold tabular-nums text-ink">{formatFcfa(r.total)}</p>

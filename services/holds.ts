@@ -3,14 +3,16 @@ import { Prisma, type Hold, type HoldItem } from "@prisma/client";
 import { db, transaction, lockClientOrders, type Tx } from "@/lib/db";
 import { AppError, notFound } from "@/lib/errors";
 import { addMinutes } from "@/lib/dates";
+import { fulfillmentFor, lenderFulfillmentInput, validateLenderFulfillment } from "@/lib/fulfillment";
 import { slotInput } from "@/lib/slots";
 import { getSettings } from "@/lib/settings";
 import { audit, type RequestMeta } from "@/lib/audit";
 import { assertAvailable, validateRentalPeriod } from "./availability";
-import { readTermsSnapshot, snapshotTerms, termsVersion, type TermsSnapshot } from "./order-snapshot";
+import { quoteDeliveryFees, readTermsSnapshot, snapshotTerms, termsVersion, type TermsSnapshot } from "./order-snapshot";
 
 export const holdInput = z.object({
   fulfillmentType: z.enum(["PICKUP", "DELIVERY"]).default("PICKUP"),
+  lenderFulfillment: lenderFulfillmentInput.optional(),
   deliveryAddress: z.string().trim().max(300).optional(),
   deliveryCityId: z.string().optional(),
   deliveryZone: z.string().trim().max(120).optional(),
@@ -91,6 +93,7 @@ export async function createHold(userId: string, input: HoldInput, meta: Request
       const quote = await tx.quote.findFirst({ where: { id: source.quoteId, clientId: userId }, include: { reservations: { select: { status: true } } } });
       if (!quote) throw notFound("Proforma");
       if (quote.validUntil <= now) throw new AppError("QUOTE_EXPIRED", "Cette proforma a expiré. Demandez-en une nouvelle.");
+      quoteDeliveryFees(quote.data);
       if (quote.reservations.some((r) => !["DRAFT", "HOLD", "PENDING_PAYMENT", "CANCELLED"].includes(r.status))) throw new AppError("CONFLICT", "Cette proforma est déjà payée.");
     }
     await tx.hold.updateMany({ where: { userId, status: "ACTIVE", expiresAt: { lte: now } }, data: { status: "EXPIRED" } });
@@ -100,6 +103,10 @@ export async function createHold(userId: string, input: HoldInput, meta: Request
       const p = products.find((x) => x.id === line.productId);
       if (!p || p.status !== "PUBLISHED" || p.deletedAt || p.lender.status !== "APPROVED") throw new AppError("VALIDATION_ERROR", "Un produit de votre panier n'est plus disponible à la location.");
       validateRentalPeriod(settings, p, { quantity: line.quantity, start: line.startDate, end: line.endDate }, now);
+    }
+    if (input.lenderFulfillment) validateLenderFulfillment(products.map((p) => p.lender), input);
+    if (!source && products.some((p) => p.lender.deliveryOnQuote && fulfillmentFor(input, p.lender.id).mode === "DELIVERY")) {
+      throw new AppError("VALIDATION_ERROR", "Demandez une proforma pour obtenir le tarif de livraison du loueur.");
     }
     const currentTerms = snapshotTerms(products.map((p) => p.lender));
     const acceptedTerms = source?.terms ?? currentTerms;
@@ -111,8 +118,13 @@ export async function createHold(userId: string, input: HoldInput, meta: Request
       contactPhone: input.contactPhone ?? null, deliverySlot: input.deliverySlot ?? null,
       returnSlot: input.returnSlot ?? null, eventName: input.eventName || null, quoteId: source?.quoteId ?? null,
     };
+    const lenderFulfillment = input.lenderFulfillment?.toSorted((a, b) => a.lenderId.localeCompare(b.lenderId));
+    const sameFulfillment = (stored: unknown) => {
+      const previous = lenderFulfillmentInput.safeParse(stored);
+      return JSON.stringify(previous.success ? previous.data : undefined) === JSON.stringify(lenderFulfillment);
+    };
     const active = await tx.hold.findMany({ where: { userId, status: "ACTIVE", expiresAt: { gt: now } }, include: { items: true } });
-    const identical = active.find((h) => sameContent(h.items, lines)
+    const identical = active.find((h) => sameContent(h.items, lines) && sameFulfillment(h.lenderFulfillment)
       && Object.entries(details).every(([key, value]) => h[key as keyof typeof details] === value)
       && Boolean(h.termsAcceptedAt) === Boolean(input.acceptTerms)
       && (!input.acceptTerms || (readTermsSnapshot(h.termsSnapshot) != null && termsVersion(readTermsSnapshot(h.termsSnapshot)!) === termsVersion(acceptedTerms))));
@@ -143,6 +155,7 @@ export async function createHold(userId: string, input: HoldInput, meta: Request
     await assertAvailable(tx, lines.map((l) => ({ productId: l.productId, quantity: l.quantity, start: l.startDate, end: l.endDate })));
     const hold = await tx.hold.create({
       data: { userId, expiresAt: addMinutes(now, duration), durationMinutes: duration, ...details,
+        lenderFulfillment: lenderFulfillment ?? Prisma.DbNull,
         termsAcceptedAt: input.acceptTerms ? now : null,
         termsSnapshot: input.acceptTerms ? acceptedTerms as Prisma.InputJsonValue : Prisma.DbNull,
         items: { create: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, startDate: l.startDate, endDate: l.endDate })) },

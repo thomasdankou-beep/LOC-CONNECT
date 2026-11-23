@@ -39,3 +39,15 @@ export function assertQuotePricing(quote: { number: string; data: unknown; total
     throw new AppError("PRICE_CHANGED", `Les conditions tarifaires de la proforma ${quote.number} doivent être actualisées. Demandez une nouvelle proforma depuis votre panier.`);
   }
 }
+
+export type QuotedDelivery = { pendingLenderIds: string[]; approvedFees: [string, number][] };
+
+export function quoteDelivery(data: unknown): QuotedDelivery | undefined {
+  return (data as { deliveryApproval?: QuotedDelivery } | null | undefined)?.deliveryApproval;
+}
+
+export function quoteDeliveryFees(data: unknown): Map<string, number> {
+  const approval = quoteDelivery(data);
+  if (approval?.pendingLenderIds.length) throw new AppError("CONFLICT", "Le tarif de livraison doit encore être confirmé par les loueurs.");
+  return new Map(approval?.approvedFees);
+}
