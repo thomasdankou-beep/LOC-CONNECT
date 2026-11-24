@@ -1,3 +1,6 @@
+import { canRecordHandover } from "@/services/handover";
+import { HandoverForm } from "@/features/lender/handover-form";
+import { readHandover } from "@/lib/material-check";
 import { fulfillmentFor } from "@/lib/fulfillment";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -118,6 +121,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <ul className="divide-y divide-line">
               {mine.map((i) => {
                 const report = i.returnReport;
+                const handover = readHandover(i.handoverCheck);
                 const to = nextLenderTarget(i.status, plan.mode, perms);
                 return (
                   <li key={i.id} className="p-5">
@@ -149,6 +153,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                           </div>
                         )}
                         <div className="mt-3 flex flex-wrap items-center gap-2">
+                          {!report && canRecordHandover(actor, plan.mode, i.status) && <HandoverForm id={i.id} name={i.productName} quantity={i.quantity} check={handover} />}
                           {to && <AdvanceButton reservationId={r.id} itemIds={[i.id]} to={to} />}
                           {["IN_USE", "RETURN_PENDING"].includes(i.status) && !report && can(actor, "RETURN_CREATE") && <LinkButton href={`/loueur/retours?item=${i.id}`} size="sm">Constater le retour</LinkButton>}
                           {i.review && <Badge tone="success">Avis {i.review.productRating}/5</Badge>}

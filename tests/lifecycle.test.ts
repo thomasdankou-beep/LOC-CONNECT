@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
+import { recordHandover } from "@/services/handover";
 import { lenderAdvance } from "@/services/reservations";
 import { acknowledgeReport, contestReport, createReturnReport, releaseDeposit, settleExpiredReports } from "@/services/returns";
 import { cancelReservation, adminRefund } from "@/services/refunds";
@@ -46,6 +47,24 @@ describe("cycle de location complet", () => {
     expect(review.status).toBe("PUBLISHED");
     expect((await db.lender.findUniqueOrThrow({ where: { id: lender.lender.id } })).ratingAvg).toBe(4);
     await expect(createReview(client.actor, item.id, { productRating: 5, lenderRating: 4, experienceRating: 5 })).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("compare le retour à la quantité réellement remise et conserve le contrôle des accessoires", async () => {
+    const { lender, item } = await rentedAndInUse();
+    const outsider = await makeLender(base.city.id);
+    const handover = {
+      quantity: 1, condition: "GOOD" as const, recipient: "Réception",
+      packaging: "1 housse", accessories: "2 câbles", notes: "La seconde unité n’a pas été remise.",
+    };
+    await expect(recordHandover(outsider.actor, item.id, handover)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(recordHandover(lender.actor, item.id, { ...handover, quantity: 3 })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(recordHandover(lender.actor, item.id, handover)).resolves.toMatchObject({ quantity: 1, packaging: "1 housse" });
+
+    const materialCheck = { packaging: "COMPLETE" as const, accessories: "INCOMPLETE" as const, notes: "Un câble manquant." };
+    await expect(createReturnReport(lender.actor, item.id, { returnedQuantity: 2, materialCheck }, [])).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    const report = await createReturnReport(lender.actor, item.id, { returnedQuantity: 1, materialCheck }, []);
+    expect(report).toMatchObject({ rentedQuantity: 2, returnedQuantity: 1, lostQuantity: 0, materialCheck, withheldAmount: 0 });
+    await expect(recordHandover(lender.actor, item.id, handover)).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("retour avec dommages : retenue plafonnée, complément facturé, fenêtre de contestation", async () => {

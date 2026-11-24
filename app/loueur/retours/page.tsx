@@ -1,3 +1,4 @@
+import { quantityToReturn, readHandover } from "@/lib/material-check";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { can } from "@/lib/auth/actor";
@@ -47,7 +48,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ i
                     <StatusBadge entry={RESERVATION_STATUS[i.status]} />
                     {canCreate && i.deposit && (
                       <ReturnReportButton
-                        item={{ id: i.id, productName: i.productName, quantity: i.quantity, refundPrice: i.refundPrice, depositAmount: i.deposit.amount, allowsExtraBilling: i.allowsExtraBilling, reference: i.reservation.reference }}
+                        item={{ id: i.id, productName: i.productName, quantity: quantityToReturn(i), handover: readHandover(i.handoverCheck), refundPrice: i.refundPrice, depositAmount: i.deposit.amount, allowsExtraBilling: i.allowsExtraBilling, reference: i.reservation.reference }}
                         evidenceRequired={settings["return.evidence_required"]}
                         canPhoto={canPhoto}
                         canDamage={canDamage}
