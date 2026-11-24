@@ -9,13 +9,14 @@ import { splitSlot } from "@/lib/slots";
 import { assertTransition, aggregateStatus } from "@/lib/state-machine";
 import { can, type Actor } from "@/lib/auth/actor";
 import { assertAvailable, validateRentalPeriod } from "./availability";
-import { computeTotals, depositFloorFrom, depositPercentFrom, effectivePaymentMode, priceLine, type LenderDeliveryTerms, type PricedLine, type Totals } from "./pricing";
+import { allocateDeposit, computeTotals, DEFAULT_LENDER_DEPOSIT_PERCENT, deliveryFeeFor, depositFloorFrom, depositPercentFrom, effectivePaymentMode, priceLine, type LenderDeliveryTerms, type PricedLine, type Totals } from "./pricing";
 import { notifyLender, notifyUsers } from "./notifications";
 import { assertCashSettled, syncCashSettlement } from "./cash";
 import { commissionRateFor } from "./plans";
 import type { QuoteData } from "./quotes";
+import { prorate, sum } from "@/lib/money";
 import { parseDate } from "@/lib/dates";
-import { assertQuotePricing, quoteDeliveryFees } from "./order-snapshot";
+import { assertQuotePricing, quoteDeliveryFees, quoteDeposits } from "./order-snapshot";
 
 const RESERVATION_ITEM_INCLUDE = {
   product: { select: { id: true, slug: true, name: true, photos: { orderBy: { position: "asc" as const }, take: 1 } } },
@@ -32,7 +33,7 @@ type OrderLine = { productId: string; quantity: number; startDate: Date; endDate
  * Chiffrage d'une commande aux prix actuels : lignes, livraison par loueur et totaux. Partagé par la réservation et la proforma,
  * pour qu'une proforma payée donne exactement les mêmes montants. Refuse la livraison si un loueur ne livre pas.
  */
-export function priceOrder(settings: Settings, items: OrderLine[], fulfillment: FulfillmentType, deliveryCityId: string | null | undefined, deliveryFees: ReadonlyMap<string, number> = new Map(), lenderFulfillment?: LenderFulfillment | null): { priced: PricedLine[]; terms: Map<string, LenderDeliveryTerms>; totals: Totals } {
+export function priceOrder(settings: Settings, items: OrderLine[], fulfillment: FulfillmentType, deliveryCityId: string | null | undefined, deliveryFees: ReadonlyMap<string, number> = new Map(), lenderFulfillment?: LenderFulfillment | null, depositOverrides: ReadonlyMap<string, number> | null = null): { priced: PricedLine[]; terms: Map<string, LenderDeliveryTerms>; totals: Totals } {
   const order = { fulfillmentType: fulfillment, lenderFulfillment };
   validateLenderFulfillment(items.map((item) => item.product.lender), order);
   const terms = new Map<string, LenderDeliveryTerms>();
@@ -42,8 +43,21 @@ export function priceOrder(settings: Settings, items: OrderLine[], fulfillment: 
     terms.set(l.id, { lenderId: l.id, cityId: l.cityId, offersDelivery: l.offersDelivery, fulfillment: fulfillmentFor(order, l.id).mode, feeLocal: fee ?? l.deliveryFeeLocal, feeRemote: fee ?? l.deliveryFeeRemote, commissionRateBps: commissionRateFor(l, settings), paymentMode: effectivePaymentMode(l, settings) });
   }
   const priced = items.map((i) =>
-    priceLine({ productId: i.productId, lenderId: i.product.lenderId, quantity: i.quantity, start: i.startDate, end: i.endDate, unitPrice: i.product.unitPrice, depositAmount: i.product.depositAmount, refundPrice: i.product.refundPrice, commissionRateBps: terms.get(i.product.lenderId)!.commissionRateBps, paymentMode: terms.get(i.product.lenderId)!.paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings), depositFloorPercent: depositFloorFrom(settings) }),
+    priceLine({ productId: i.productId, lenderId: i.product.lenderId, quantity: i.quantity, start: i.startDate, end: i.endDate, unitPrice: i.product.unitPrice, depositAmount: i.product.depositAmount, refundPrice: i.product.refundPrice, commissionRateBps: terms.get(i.product.lenderId)!.commissionRateBps, paymentMode: terms.get(i.product.lenderId)!.paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositOverrides ? DEFAULT_LENDER_DEPOSIT_PERCENT : depositPercentFrom(settings), depositFloorPercent: depositOverrides ? null : depositFloorFrom(settings) }),
   );
+  if (depositOverrides) {
+    for (const [lenderId, term] of terms) {
+      const lines = priced.filter((line) => line.lenderId === lenderId).sort((a, b) =>
+        a.productId.localeCompare(b.productId) || a.start.getTime() - b.start.getTime()
+        || a.end.getTime() - b.end.getTime() || a.quantity - b.quantity,
+      );
+      const rental = sum(lines.map((line) => line.subtotal));
+      const delivery = deliveryFeeFor(term, term.fulfillment ?? fulfillment, deliveryCityId);
+      const deposit = depositOverrides.get(lenderId) ?? prorate(rental + delivery, DEFAULT_LENDER_DEPOSIT_PERCENT, 100);
+      const shares = allocateDeposit(deposit, lines.map((line) => line.subtotal));
+      lines.forEach((line, index) => { line.deposit = shares[index]; });
+    }
+  }
   return { priced, terms, totals: computeTotals(priced, terms, fulfillment, deliveryCityId, settings["commission.on_delivery"]) };
 }
 
@@ -81,7 +95,7 @@ export async function createReservationFromHold(userId: string, holdId: string, 
     if (!quote && hold.fulfillmentType === "DELIVERY" && hold.items.some((i) => i.product.lender.deliveryOnQuote && fulfillmentFor(hold, i.product.lenderId).mode === "DELIVERY")) {
       throw new AppError("VALIDATION_ERROR", "Demandez une proforma pour obtenir le tarif de livraison du loueur.");
     }
-    const { priced, totals } = priceOrder(settings, hold.items, hold.fulfillmentType, hold.deliveryCityId, quoteDeliveryFees(quote?.data), hold.lenderFulfillment as LenderFulfillment | null);
+    const { priced, totals } = priceOrder(settings, hold.items, hold.fulfillmentType, hold.deliveryCityId, quoteDeliveryFees(quote?.data), hold.lenderFulfillment as LenderFulfillment | null, quoteDeposits(quote?.data));
     if (quote) assertQuotePricing(quote, priced, totals, hold.items);
 
     let ref = reference("LC");

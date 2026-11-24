@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar, Stars } from "@/components/ui/misc";
 import { CaretRight, HandCoins, MapPin, ShieldCheck, Storefront, Truck, Info } from "@/components/ui/icons";
 import { getSettings } from "@/lib/settings";
-import { depositFloorFrom, depositLabel, depositPercentFrom, effectivePaymentMode } from "@/services/pricing";
+import { DEFAULT_LENDER_DEPOSIT_PERCENT, effectivePaymentMode } from "@/services/pricing";
 import { commissionRateFor } from "@/services/plans";
 import { BookingPanel } from "@/features/catalog/booking-panel";
 import { returnBufferDays } from "@/services/availability";
@@ -26,11 +26,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const p = await db.product.findFirst({ where: { slug, status: "PUBLISHED", deletedAt: null }, include: { city: true, category: true, photos: { orderBy: { position: "asc" }, take: 1 } } });
   if (!p) return { title: "Produit introuvable" };
-  const st = await getSettings();
-  const depositText = depositLabel(depositPercentFrom(st), depositFloorFrom(st), p.refundPrice);
   return {
     title: `Location ${p.name} à ${p.city.name}`,
-    description: `${p.name} en location à ${p.city.name} dès ${formatFcfa(p.unitPrice)} par jour. Caution ${depositText ?? formatFcfa(p.depositAmount)}. ${p.description.slice(0, 110)}`,
+    description: `${p.name} en location à ${p.city.name} dès ${formatFcfa(p.unitPrice)} par jour. Caution indicative de ${DEFAULT_LENDER_DEPOSIT_PERCENT} %. ${p.description.slice(0, 110)}`,
     alternates: { canonical: `/produits/${p.slug}` },
     openGraph: { title: `Location ${p.name} à ${p.city.name} | LOC'CONNECT`, images: p.photos[0] ? [p.photos[0].url] : undefined },
   };
@@ -48,9 +46,6 @@ export default async function ProductPage({ params, searchParams }: Props) {
   const [actor, reviews, similar, settings] = await Promise.all([getActor(), getProductReviews(product.id), similarProducts(product.id, product.categoryId), getSettings()]);
   const paymentMode = effectivePaymentMode(product.lender, settings);
   const ratePct = commissionRateFor(product.lender, settings) / 100;
-  const depositPercent = depositPercentFrom(settings);
-  const depositFloor = depositFloorFrom(settings);
-  const floorUnit = depositFloor ? Math.round((product.refundPrice * depositFloor) / 100) : 0;
   const isClient = actor?.accountType === "CLIENT";
   const isFavorite = isClient ? Boolean(await db.favorite.findUnique({ where: { userId_productId: { userId: actor!.userId, productId: product.id } } })) : false;
   const initialStart = sp.start && /^\d{4}-\d{2}-\d{2}$/.test(sp.start) ? sp.start : undefined;
@@ -114,14 +109,9 @@ export default async function ProductPage({ params, searchParams }: Props) {
               </div>
               <div className="rounded-card border border-line bg-surface p-4">
                 <dt className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted"><ShieldCheck size={14} /> Caution</dt>
-                {depositPercent != null ? (
-                  <dd className="mt-1 text-lg font-semibold tabular-nums text-ink">
-                    {depositPercent} % <span className="text-sm font-normal text-muted">de la location</span>
-                    {floorUnit > 0 && <span className="block text-sm font-normal text-muted">minimum {formatFcfa(floorUnit)} par unité</span>}
-                  </dd>
-                ) : (
-                  <dd className="mt-1 text-lg font-semibold tabular-nums text-ink">{formatFcfa(product.depositAmount)} <span className="text-sm font-normal text-muted">par unité</span></dd>
-                )}
+                <dd className="mt-1 text-lg font-semibold tabular-nums text-ink">
+                  {DEFAULT_LENDER_DEPOSIT_PERCENT} % <span className="text-sm font-normal text-muted">du total du loueur par défaut</span>
+                </dd>
               </div>
               <div className="rounded-card border border-line bg-surface p-4">
                 <dt className="text-xs font-medium uppercase tracking-wide text-muted">Quantité en stock</dt>
@@ -194,9 +184,6 @@ export default async function ProductPage({ params, searchParams }: Props) {
             returnBufferDays={returnBufferDays(settings)}
             productId={product.id}
             unitPrice={product.unitPrice}
-            deposit={product.depositAmount}
-            depositPercent={depositPercent}
-            depositFloorUnit={floorUnit}
             stock={product.stockQuantity}
             minDays={product.minDays}
             maxDays={product.maxDays}

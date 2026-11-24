@@ -9,7 +9,7 @@ import { stockOverview } from "@/services/products";
 import { createHold, holdInput } from "@/services/holds";
 import { createReservationFromHold } from "@/services/reservations";
 import { initiatePayment, simulatePayment } from "@/services/payments";
-import { createQuote, payQuote, type QuoteData } from "@/services/quotes";
+import { confirmDeliveryPrice, createQuote, payQuote, type QuoteData } from "@/services/quotes";
 import type { InvoiceData } from "@/services/invoices";
 import { snapshotTerms, termsVersion } from "@/services/order-snapshot";
 import { deliveryUpdate, updateDelivery } from "@/services/deliveries";
@@ -45,8 +45,9 @@ async function applyMod(client: Awaited<ReturnType<typeof makeClient>>, lender: 
 
 describe("coherence des proformas, consentements et livraisons", () => {
   it("A1 : reprise retrait vers proforma livree conserve son montant et sa livraison", async () => {
-    const { client } = await setup();
+    const { lender, client } = await setup();
     const quote = await createQuote(client.user.id, delivery());
+    await confirmDeliveryPrice(lender.actor, quote.id, { depositOnly: true });
     const oldHold = await createHold(client.user.id, { fulfillmentType: "PICKUP", acceptTerms: true, replaceExisting: true });
     await createReservationFromHold(client.user.id, oldHold.id);
     const h = await payQuote(client.user.id, quote.id, { accept: true });
@@ -69,8 +70,9 @@ describe("coherence des proformas, consentements et livraisons", () => {
   });
 
   it("A3 : refuse une valeur de remboursement modifiee depuis la proforma", async () => {
-    const { client, product } = await setup();
+    const { lender, client, product } = await setup();
     const quote = await createQuote(client.user.id, { fulfillmentType: "PICKUP" });
+    await confirmDeliveryPrice(lender.actor, quote.id, { depositOnly: true });
     await db.product.update({ where: { id: product.id }, data: { refundPrice: 90000 } });
     await expect(payQuote(client.user.id, quote.id, { accept: true })).rejects.toMatchObject({ code: "PRICE_CHANGED" });
     expect(await db.reservation.count()).toBe(0);
@@ -80,6 +82,7 @@ describe("coherence des proformas, consentements et livraisons", () => {
     const { lender, client } = await setup();
     await db.lender.update({ where: { id: lender.lender.id }, data: { terms: "CONDITIONS VERSION A" } });
     const quote = await createQuote(client.user.id, { fulfillmentType: "PICKUP" });
+    await confirmDeliveryPrice(lender.actor, quote.id, { depositOnly: true });
     const h = await payQuote(client.user.id, quote.id, { accept: true });
     const r = await createReservationFromHold(client.user.id, h.id);
     const { payment } = await initiatePayment(client.actor, { reservationId: r.id, method: "WAVE", idempotencyKey: randomUUID() });
@@ -132,10 +135,11 @@ describe("coherence des proformas, consentements et livraisons", () => {
   });
 
   it("A9 : refuse des variations de prix compensees entre lignes", async () => {
-    const { client, lender, product } = await setup();
+    const { lender, client, product } = await setup();
     const second = await makeProduct(lender.lender.id, base.category.id, base.city.id);
     await addToCart(client.user.id, { productId: second.id, quantity: 1, startDate: day(10), endDate: day(11) });
     const quote = await createQuote(client.user.id, { fulfillmentType: "PICKUP" });
+    await confirmDeliveryPrice(lender.actor, quote.id, { depositOnly: true });
     await db.product.update({ where: { id: product.id }, data: { unitPrice: 1500 } });
     await db.product.update({ where: { id: second.id }, data: { unitPrice: 500 } });
     await expect(payQuote(client.user.id, quote.id, { accept: true })).rejects.toMatchObject({ code: "PRICE_CHANGED" });
@@ -181,17 +185,20 @@ describe("coherence des proformas, consentements et livraisons", () => {
   });
 
   it("refuse une nouvelle valeur de remboursement entre le HOLD et la reservation", async () => {
-    const { client, product } = await setup();
+    const { lender, client, product } = await setup();
     const quote = await createQuote(client.user.id, delivery());
+    await confirmDeliveryPrice(lender.actor, quote.id, { depositOnly: true });
     const h = await payQuote(client.user.id, quote.id, { accept: true });
     await db.product.update({ where: { id: product.id }, data: { refundPrice: 90000 } });
     await expect(createReservationFromHold(client.user.id, h.id)).rejects.toMatchObject({ code: "PRICE_CHANGED" });
   });
 
   it("refuse une ancienne proforma sans empreinte et preserve son document", async () => {
-    const { client } = await setup();
+    const { lender, client } = await setup();
     const quote = await createQuote(client.user.id, delivery());
-    const data = quote.data as unknown as QuoteData;
+    await confirmDeliveryPrice(lender.actor, quote.id, { depositOnly: true });
+    const confirmed = await db.quote.findUniqueOrThrow({ where: { id: quote.id } });
+    const data = confirmed.data as unknown as QuoteData;
     delete data.pricingFingerprint;
     await db.quote.update({ where: { id: quote.id }, data: { data: data as never } });
     await expect(payQuote(client.user.id, quote.id, { accept: true })).rejects.toMatchObject({ code: "PRICE_CHANGED" });
@@ -278,8 +285,9 @@ describe("coherence des proformas, consentements et livraisons", () => {
   });
 
   it("serialise les doubles clics sur proforma, reservation et paiement", async () => {
-    const { client } = await setup();
+    const { lender, client } = await setup();
     const quote = await createQuote(client.user.id, delivery());
+    await confirmDeliveryPrice(lender.actor, quote.id, { depositOnly: true });
     const holds = await Promise.all([1, 2].map(() => payQuote(client.user.id, quote.id, { accept: true })));
     expect(holds[0].id).toBe(holds[1].id);
     const reservations = await Promise.all(holds.map((h) => createReservationFromHold(client.user.id, h.id)));

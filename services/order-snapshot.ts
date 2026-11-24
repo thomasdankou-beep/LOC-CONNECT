@@ -40,6 +40,12 @@ export function assertQuotePricing(quote: { number: string; data: unknown; total
   }
 }
 
+/** An absent snapshot identifies proformas issued under the former pricing rule. */
+export function quoteDeposits(data: unknown): Map<string, number> | null {
+  const overrides = (data as { depositOverrides?: [string, number][] } | null | undefined)?.depositOverrides;
+  return overrides ? new Map(overrides) : null;
+}
+
 export type QuotedDelivery = { pendingLenderIds: string[]; approvedFees: [string, number][] };
 
 export function quoteDelivery(data: unknown): QuotedDelivery | undefined {
@@ -48,6 +54,6 @@ export function quoteDelivery(data: unknown): QuotedDelivery | undefined {
 
 export function quoteDeliveryFees(data: unknown): Map<string, number> {
   const approval = quoteDelivery(data);
-  if (approval?.pendingLenderIds.length) throw new AppError("CONFLICT", "Les dates, les créneaux et les éventuels frais de livraison doivent encore être confirmés par les loueurs.");
+  if (approval?.pendingLenderIds.length) throw new AppError("CONFLICT", "Les loueurs doivent encore valider leur proforma.");
   return new Map(approval?.approvedFees);
 }

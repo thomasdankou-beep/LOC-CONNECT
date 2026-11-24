@@ -4,7 +4,8 @@ import { AppError, notFound } from "@/lib/errors";
 import { parseDate, daysBetween } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { availabilityForProduct, inventoryEnd, minAvailable, validateRentalPeriod } from "./availability";
-import { depositFloorFrom, depositPercentFrom, effectivePaymentMode, priceLine } from "./pricing";
+import { prorate, sum } from "@/lib/money";
+import { allocateDeposit, DEFAULT_LENDER_DEPOSIT_PERCENT, effectivePaymentMode, priceLine } from "./pricing";
 import { commissionRateFor } from "./plans";
 import type { LenderPaymentMode } from "@prisma/client";
 
@@ -129,7 +130,7 @@ export async function getCart(userId: string): Promise<CartView> {
     const p = item.product;
     const rate = commissionRateFor(p.lender, settings);
     const paymentMode = effectivePaymentMode(p.lender, settings);
-    const priced = priceLine({ productId: p.id, lenderId: p.lenderId, quantity: item.quantity, start: item.startDate, end: item.endDate, unitPrice: p.unitPrice, depositAmount: p.depositAmount, refundPrice: p.refundPrice, commissionRateBps: rate, paymentMode, minCashDeposit: settings["cash.min_deposit"], depositPercent: depositPercentFrom(settings), depositFloorPercent: depositFloorFrom(settings) });
+    const priced = priceLine({ productId: p.id, lenderId: p.lenderId, quantity: item.quantity, start: item.startDate, end: item.endDate, unitPrice: p.unitPrice, depositAmount: p.depositAmount, refundPrice: p.refundPrice, commissionRateBps: rate, paymentMode, minCashDeposit: settings["cash.min_deposit"] });
     const days = await availabilityForProduct(db, p.id, item.startDate, inventoryEnd(item.endDate, settings), { excludeHoldUserId: userId });
     const free = minAvailable(days);
     const sellable = p.status === "PUBLISHED" && !p.deletedAt && p.lender.status === "APPROVED";
@@ -148,7 +149,7 @@ export async function getCart(userId: string): Promise<CartView> {
       unitPrice: p.unitPrice,
       subtotal: priced.subtotal,
       commission: priced.commission,
-      deposit: priced.deposit,
+      deposit: 0,
       paymentMode,
       cashDue: priced.cashDue,
       available: free,
@@ -160,16 +161,21 @@ export async function getCart(userId: string): Promise<CartView> {
     const g = groupsMap.get(l.lenderId) ?? { lenderId: l.lenderId, lenderName: l.lenderName, lines: [], subtotal: 0, deposit: 0, paymentMode: l.paymentMode, cash: 0 };
     g.lines.push(l);
     g.subtotal += l.subtotal;
-    g.deposit += l.deposit;
     g.cash += l.cashDue;
     groupsMap.set(l.lenderId, g);
   }
   const subtotal = lines.reduce((a, l) => a + l.subtotal, 0);
-  const deposit = lines.reduce((a, l) => a + l.deposit, 0);
+  const groups = [...groupsMap.values()];
+  for (const group of groups) {
+    group.deposit = prorate(group.subtotal, DEFAULT_LENDER_DEPOSIT_PERCENT, 100);
+    const shares = allocateDeposit(group.deposit, group.lines.map((line) => line.subtotal));
+    group.lines.forEach((line, index) => { line.deposit = shares[index]; });
+  }
+  const deposit = sum(groups.map((group) => group.deposit));
   const cash = lines.reduce((a, l) => a + l.cashDue, 0);
   return {
     lines,
-    groups: [...groupsMap.values()],
+    groups,
     subtotal,
     deposit,
     cash,
