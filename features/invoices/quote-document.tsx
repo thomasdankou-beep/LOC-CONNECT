@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogoArtwork } from "@/components/layout/logo";
 import type { ReactNode } from "react";
 import { formatFcfa } from "@/lib/money";
 import { formatDate } from "@/lib/dates";
@@ -54,10 +55,7 @@ export function QuoteDocument({ number, createdAt, validUntil, acceptedAt, data,
             <LenderHeader party={seller} />
           ) : (
             <div>
-              <div className="flex items-center gap-2">
-                <span className="flex size-9 items-center justify-center rounded-[8px] bg-[#1f4fd6] text-[13px] font-bold text-white">LC</span>
-                <span className="text-[18px] font-bold tracking-tight text-[#0f1b3d]">LOC&apos;CONNECT</span>
-              </div>
+              <LogoArtwork />
               <p className="mt-2 font-medium text-[#0f1b3d]">{data.platform.name}</p>
               {data.platform.address && <p>{data.platform.address}</p>}
               <p>{[data.platform.phone, data.platform.email].filter(Boolean).join(" · ")}</p>

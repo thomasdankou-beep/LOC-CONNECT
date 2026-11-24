@@ -35,9 +35,9 @@ export async function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-        <div className="flex items-center gap-8">
+        <div className="flex min-w-0 items-center gap-8">
           <Logo />
-          <nav className="hidden items-center gap-1 lg:flex" aria-label="Navigation principale">
+          <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="Navigation principale">
             {LINKS.map((l) => (
               <Link key={l.href} href={l.href} className="rounded-control px-3 py-2 text-sm font-medium text-ink/80 transition hover:bg-surface-2 hover:text-ink">
                 {l.label}
@@ -45,7 +45,7 @@ export async function SiteHeader() {
             ))}
           </nav>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Link href="/catalogue" className="flex size-11 items-center justify-center rounded-control text-ink hover:bg-surface-2 lg:hidden" aria-label="Rechercher">
             <MagnifyingGlass size={22} />
           </Link>

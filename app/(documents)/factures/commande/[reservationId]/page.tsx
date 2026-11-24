@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LogoArtwork } from "@/components/layout/logo";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { pageActor } from "@/lib/auth/page";
@@ -41,10 +42,7 @@ export default async function Page({ params }: { params: Promise<{ reservationId
       <article className="bg-white p-[12mm] text-[12px] leading-relaxed text-[#1f2a44] shadow-[0_8px_32px_rgba(15,27,61,0.12)] print:p-0 print:shadow-none">
         <div className="flex flex-wrap items-start justify-between gap-6 border-b-2 border-[#0f1b3d] pb-5">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="flex size-9 items-center justify-center rounded-[8px] bg-[#1f4fd6] text-[13px] font-bold text-white">LC</span>
-              <span className="text-[18px] font-bold tracking-tight text-[#0f1b3d]">LOC&apos;CONNECT</span>
-            </div>
+            <LogoArtwork />
             <p className="mt-2 font-medium text-[#0f1b3d]">{settings["invoice.company_name"]}</p>
             <p>{settings["invoice.company_address"]}</p>
           </div>
