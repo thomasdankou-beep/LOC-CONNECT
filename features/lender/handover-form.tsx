@@ -58,7 +58,7 @@ export function HandoverForm({ id, name, quantity, check }: { id: string; name: 
             <Input name="packaging" label="Emballages remis" defaultValue={check?.packaging} placeholder="Ex. 5 housses" maxLength={300} />
             <Input name="accessories" label="Accessoires remis" defaultValue={check?.accessories} placeholder="Ex. 2 câbles" maxLength={300} />
             <Textarea name="notes" label="Observations et réserves" defaultValue={check?.notes} maxLength={1000} rows={3} />
-            <SignaturePad label="Signature de la personne qui réceptionne" strokes={signature} onChange={setSignature} />
+            {check?.signature && <SignaturePad label="Renouveler la signature de cette fiche" strokes={signature} onChange={setSignature} />}
             {error && <p role="alert" className="text-sm text-danger">{error}</p>}
             <Button type="submit" loading={pending}>Enregistrer la remise</Button>
           </form>

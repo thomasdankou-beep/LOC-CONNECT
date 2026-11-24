@@ -480,6 +480,7 @@ model Lender {
   subscriptions    Subscription[]
   lenderScore      LenderScore?
   modifications    ModificationRequest[]
+  handoverSignatures HandoverSignature[]
 
   @@index([status, cityId])
 }
@@ -793,9 +794,26 @@ model Reservation {
   modifications   ModificationRequest[]
   cashSettlements CashSettlement[]
   invoices        Invoice[]
+  handoverSignatures HandoverSignature[]
 
   @@index([clientId, status])
   @@index([status, createdAt])
+}
+
+model HandoverSignature {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  lenderId      String
+  lender        Lender      @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  fingerprint   String
+  snapshot      Json
+  signer        String
+  strokes       Json
+  recordedById  String
+  signedAt      DateTime    @default(now())
+
+  @@unique([reservationId, lenderId, fingerprint])
 }
 
 model ReservationItem {

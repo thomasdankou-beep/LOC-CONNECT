@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Signature } from "@/lib/signature";
 import { db } from "@/lib/db";
+import { handoverSnapshot, signHandover } from "@/services/handover-signatures";
 import { recordHandover } from "@/services/handover";
 import { lenderAdvance } from "@/services/reservations";
 import { acknowledgeReport, contestReport, createReturnReport, releaseDeposit, settleExpiredReports } from "@/services/returns";
@@ -68,6 +69,35 @@ describe("cycle de location complet", () => {
     const report = await createReturnReport(lender.actor, item.id, { returnedQuantity: 1, materialCheck }, []);
     expect(report).toMatchObject({ rentedQuantity: 2, returnedQuantity: 1, lostQuantity: 0, materialCheck, withheldAmount: 0 });
     await expect(recordHandover(lender.actor, item.id, handover)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("signe un seul bon pour deux articles et refuse une signature sur une version périmée", async () => {
+    const lender = await makeLender(base.city.id);
+    const first = await makeProduct(lender.lender.id, base.category.id, base.city.id);
+    const second = await makeProduct(lender.lender.id, base.category.id, base.city.id);
+    const client = await makeClient();
+    const { reservation } = await bookAndPay(client, [
+      { productId: first.id, quantity: 2, start: 5, end: 7 },
+      { productId: second.id, quantity: 1, start: 5, end: 7 },
+    ]);
+    await lenderAdvance(lender.actor, reservation.id, "READY");
+    const checks = { quantity: 1, condition: "GOOD" as const, recipient: "Client", packaging: "", accessories: "", notes: "" };
+    const items = () => db.reservationItem.findMany({ where: { reservationId: reservation.id } });
+    await recordHandover(lender.actor, reservation.items.find((item) => item.productId === first.id)!.id, { ...checks, notes: "Une unité manquante." });
+    expect(handoverSnapshot(await items())).toBeUndefined();
+    const secondId = reservation.items.find((item) => item.productId === second.id)!.id;
+    await recordHandover(lender.actor, secondId, checks);
+    const original = handoverSnapshot(await items())!;
+    const strokes: Signature = [[[10, 20], [40, 30]]];
+    const input = { signer: "Client", fingerprint: original.fingerprint, strokes };
+    const signed = await signHandover(lender.actor, reservation.id, input);
+    expect(signed.snapshot).toEqual(expect.arrayContaining([expect.objectContaining({ plannedQuantity: 2, quantity: 1, notes: "Une unité manquante." })]));
+    expect((await signHandover(lender.actor, reservation.id, input)).id).toBe(signed.id);
+    await recordHandover(lender.actor, secondId, { ...checks, notes: "Emballage ouvert." });
+    await expect(signHandover(lender.actor, reservation.id, input)).rejects.toMatchObject({ code: "CONFLICT" });
+    const changed = handoverSnapshot(await items())!;
+    expect(changed.fingerprint).not.toBe(original.fingerprint);
+    expect((await signHandover(lender.actor, reservation.id, { ...input, fingerprint: changed.fingerprint })).id).not.toBe(signed.id);
   });
 
   it("retour avec dommages : retenue plafonnée, complément facturé, fenêtre de contestation", async () => {
