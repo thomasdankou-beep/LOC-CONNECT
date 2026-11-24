@@ -9,7 +9,7 @@ import { SLOTS, slotLabel } from "@/lib/slots";
 import { Input, Select } from "@/components/ui/field";
 import { api, ApiError } from "@/lib/api-client";
 
-export function DeliveryPriceForm({ quoteId, pickup, outDate, backDate, eventDate, requestedDates, preferredOut, preferredBack, estimatedDeposit, deliveryFee, needsLogistics }: { quoteId: string; pickup: boolean; outDate: string; backDate: string; eventDate?: string; requestedDates?: { delivery: string; recovery: string }; preferredOut?: string | null; preferredBack?: string | null; estimatedDeposit?: number; deliveryFee: number; needsLogistics: boolean }) {
+export function DeliveryPriceForm({ quoteId, pickup, outDate, backDate, eventDate, requestedDates, preferredOut, preferredBack, estimatedDeposit, deliveryFee, needsLogistics, depositExcludesTransport }: { quoteId: string; pickup: boolean; outDate: string; backDate: string; eventDate?: string; requestedDates?: { delivery: string; recovery: string }; preferredOut?: string | null; preferredBack?: string | null; estimatedDeposit?: number; deliveryFee: number; needsLogistics: boolean; depositExcludesTransport?: true }) {
   const window = requestedDates ? { firstDelivery: toISODate(addDays(parseDate(outDate), -1)), lastDelivery: outDate, firstRecovery: toISODate(addDays(parseDate(backDate), -1)), lastRecovery: backDate } : eventDate ? eventDeliveryWindow(eventDate) : undefined;
   const latestDelivery = window && window.lastDelivery < outDate ? window.lastDelivery : outDate;
   const earliestRecovery = requestedDates ? window?.firstRecovery : window && window.firstRecovery > backDate ? window.firstRecovery : backDate;
@@ -42,7 +42,7 @@ export function DeliveryPriceForm({ quoteId, pickup, outDate, backDate, eventDat
     <form onSubmit={confirm} className="mt-3 space-y-2">
       {estimatedDeposit !== undefined && (
         <Input label="Caution personnalisée (F CFA)" name="depositAmount" type="number" min={0} max={1000000000} step={1} disabled={pending}
-          hint={`Caution estimée à ${formatFcfa(estimatedDeposit)}. Laissez vide pour appliquer 30 % du total confirmé, livraison comprise si applicable.`} />
+          hint={`Caution estimée à ${formatFcfa(estimatedDeposit)}. Laissez vide pour appliquer 30 % ${depositExcludesTransport ? "du montant de la location" : "de la location et du transport pour cette proforma"}.`} />
       )}
       {needsLogistics && <>
         {!pickup && <Input label="Livraison et récupération (F CFA)" name="amount" type="number" min={0} max={1000000} step={1} defaultValue={deliveryFee} required disabled={pending} />}

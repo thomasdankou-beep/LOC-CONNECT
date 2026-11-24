@@ -110,7 +110,7 @@ export default async function ProductPage({ params, searchParams }: Props) {
               <div className="rounded-card border border-line bg-surface p-4">
                 <dt className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted"><ShieldCheck size={14} /> Caution</dt>
                 <dd className="mt-1 text-lg font-semibold tabular-nums text-ink">
-                  {DEFAULT_LENDER_DEPOSIT_PERCENT} % <span className="text-sm font-normal text-muted">du total du loueur par défaut</span>
+                  {DEFAULT_LENDER_DEPOSIT_PERCENT} % <span className="text-sm font-normal text-muted">du montant de la location par défaut</span>
                 </dd>
               </div>
               <div className="rounded-card border border-line bg-surface p-4">

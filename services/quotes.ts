@@ -47,6 +47,7 @@ export type QuoteGroup = {
 
 export type QuoteData = {
   pricingFingerprint?: string;
+  depositExcludesTransport?: true;
   depositOverrides?: [string, number][];
   logisticsApprovalIds?: string[];
   deliveryApproval?: QuotedDelivery;
@@ -110,7 +111,7 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
   const items = await db.cartItem.findMany({ where: { cart: { userId } }, include: { product: { include: { lender: { include: { city: true } } } } }, orderBy: { createdAt: "asc" } });
   const now = new Date();
   for (const i of items) validateRentalPeriod(settings, i.product, { quantity: i.quantity, start: i.startDate, end: i.endDate }, now);
-  const { priced, totals } = priceOrder(settings, items, input.fulfillmentType, input.deliveryCityId, undefined, input.lenderFulfillment, new Map());
+  const { priced, totals } = priceOrder(settings, items, input.fulfillmentType, input.deliveryCityId, undefined, input.lenderFulfillment, { overrides: new Map(), includesTransport: false });
 
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
   const city = input.deliveryCityId ? await db.city.findUnique({ where: { id: input.deliveryCityId } }) : null;
@@ -178,6 +179,7 @@ export async function createQuote(userId: string, input: z.infer<typeof quoteInp
     ...(input.eventDate ? { eventDate: input.eventDate } : {}),
     ...(pendingLenderIds.length ? { deliveryApproval: { pendingLenderIds, approvedFees: [] } } : {}),
     depositOverrides: [],
+    depositExcludesTransport: true,
     logisticsApprovalIds,
     pricingFingerprint: pricingFingerprint(priced, totals, items),
     platform: { name: settings["invoice.company_name"], address: settings["invoice.company_address"], rccm: settings["invoice.company_rccm"], ncc: settings["invoice.company_ncc"], phone: settings["site.support_phone"], email: settings["site.support_email"] },
@@ -335,18 +337,19 @@ export async function confirmDeliveryPrice(actor: DeliveryActor, quoteId: string
     const data = quote.data as unknown as QuoteData;
     const approval = data.deliveryApproval!;
     approval.pendingLenderIds = approval.pendingLenderIds.filter((id) => id !== actor.lenderId);
-    const depositOverrides = quoteDeposits(data);
+    const deposits = quoteDeposits(data);
     const needsLogistics = data.logisticsApprovalIds?.includes(actor.lenderId) ?? true;
-    if (needsLogistics === ("depositOnly" in input) || (input.depositAmount !== undefined && !depositOverrides)) {
+    if (needsLogistics === ("depositOnly" in input) || (input.depositAmount !== undefined && !deposits)) {
       throw new AppError("VALIDATION_ERROR", "Vérifiez les champs requis pour cette proforma.");
     }
 
     // Verify the original basket before applying the confirmed transport prices.
     const originalFees = new Map(data.groups.map((group) => [group.lenderId, group.delivery]));
-    const original = priceOrder(settings, quote.items, quote.fulfillmentType, quote.deliveryCityId, originalFees, quote.lenderFulfillment as LenderFulfillment | null, quoteDeposits(quote.data));
+    const original = priceOrder(settings, quote.items, quote.fulfillmentType, quote.deliveryCityId, originalFees, quote.lenderFulfillment as LenderFulfillment | null, deposits);
     assertQuotePricing(quote, original.priced, original.totals, quote.items);
-    if (input.depositAmount !== undefined) depositOverrides!.set(actor.lenderId, input.depositAmount);
-    if (depositOverrides) data.depositOverrides = [...depositOverrides];
+    if (deposits && input.depositAmount !== undefined) {
+      data.depositOverrides = [...deposits.overrides, [actor.lenderId, input.depositAmount]];
+    }
     let lenderFulfillment = quote.lenderFulfillment as LenderFulfillment | null;
     if (!("depositOnly" in input)) {
       const { amount, deliveryDate, returnDate, deliverySlot, returnSlot } = input;
@@ -413,7 +416,7 @@ export async function confirmDeliveryPrice(actor: DeliveryActor, quoteId: string
       }
     }
     const deliveryFees = new Map(approval.approvedFees);
-    const { priced, totals } = priceOrder(settings, quote.items, quote.fulfillmentType, quote.deliveryCityId, deliveryFees, lenderFulfillment, depositOverrides);
+    const { priced, totals } = priceOrder(settings, quote.items, quote.fulfillmentType, quote.deliveryCityId, deliveryFees, lenderFulfillment, quoteDeposits(data));
     data.pricingFingerprint = pricingFingerprint(priced, totals, quote.items);
     data.groups = data.groups.map((group) => {
       const plan = fulfillmentFor({ ...quote, lenderFulfillment }, group.lenderId);
