@@ -13,7 +13,6 @@ import { HandCoins, ShoppingCart, Storefront, ShieldCheck, WarningCircle } from 
 import { Badge } from "@/components/ui/badge";
 import { PAYMENT_MODE } from "@/lib/labels";
 import { getSettings } from "@/lib/settings";
-import { depositFloorFrom, depositPercentFrom } from "@/services/pricing";
 import { CartLineControls } from "@/features/cart/cart-line-controls";
 
 export const metadata: Metadata = { title: "Mon panier", robots: { index: false } };
@@ -30,8 +29,6 @@ export default async function CartPage() {
   }
   const cart = await getCart(actor.userId);
   const st = await getSettings();
-  const depositPercent = depositPercentFrom(st);
-  const depositFloor = depositFloorFrom(st);
 
   if (cart.lines.length === 0) {
     return (
@@ -75,7 +72,6 @@ export default async function CartPage() {
                       <p className="mt-1 text-sm text-muted">
                         {formatRentalPeriod(l.startDate, l.endDate)} · {formatFcfa(l.unitPrice)} par jour
                       </p>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted"><ShieldCheck size={14} /> Caution {formatFcfa(l.deposit)}</p>
                       {!l.ok && (
                         <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-danger" role="alert">
                           <WarningCircle size={16} /> {l.available <= 0 ? "Plus disponible sur cette période" : `Seulement ${l.available} disponible${l.available > 1 ? "s" : ""} sur cette période`}
@@ -88,6 +84,9 @@ export default async function CartPage() {
                   </li>
                 ))}
               </ul>
+              <p className="flex items-center gap-2 border-t border-line px-5 py-3 text-sm text-muted">
+                <ShieldCheck size={16} /> Caution estimée pour ce loueur · {formatFcfa(g.deposit)}
+              </p>
               {g.cash > 0 && (
                 <p className="flex items-start gap-2 border-t border-line bg-warn-soft/40 px-5 py-3 text-sm text-ink">
                   <HandCoins size={18} className="mt-0.5 shrink-0 text-royal-ink" />
@@ -113,7 +112,7 @@ export default async function CartPage() {
                 <dd className="tabular-nums text-ink">{formatFcfa(cart.subtotal)}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-muted">Cautions{depositPercent != null ? ` (${depositPercent} % de la location${depositFloor ? `, minimum ${depositFloor} % de la valeur du matériel` : ""})` : ""}</dt>
+                <dt className="text-muted">Cautions estimées (30 % hors livraison)</dt>
                 <dd className="tabular-nums text-ink">{formatFcfa(cart.deposit)}</dd>
               </div>
               <div className="flex justify-between">

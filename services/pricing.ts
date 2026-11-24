@@ -2,6 +2,22 @@ import { applyBps, formatFcfa, prorate, sum } from "@/lib/money";
 import { daysBetween } from "@/lib/dates";
 import type { FulfillmentType, LenderPaymentMode } from "@prisma/client";
 
+export const DEFAULT_LENDER_DEPOSIT_PERCENT = 30;
+
+/** Répartit un total de caution en FCFA sans écart d’arrondi. */
+export function allocateDeposit(deposit: number, subtotals: number[]): number[] {
+  const rental = sum(subtotals);
+  let cumulative = 0;
+  let allocated = 0;
+  return subtotals.map((subtotal, index) => {
+    cumulative += subtotal;
+    const throughLine = index === subtotals.length - 1 ? deposit : prorate(deposit, cumulative, rental);
+    const share = throughLine - allocated;
+    allocated = throughLine;
+    return share;
+  });
+}
+
 /** Pourcentage de caution applicable (null : caution fixée par unité sur chaque produit). */
 export function depositPercentFrom(settings: { "deposit.mode": string; "deposit.percent": number }): number | null {
   return settings["deposit.mode"] === "PERCENT_OF_RENTAL" ? Math.min(100, Math.max(0, settings["deposit.percent"])) : null;

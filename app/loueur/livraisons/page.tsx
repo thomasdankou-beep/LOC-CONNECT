@@ -47,11 +47,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       <PageHeader title="Livraisons" description="Planifiez, suivez et prouvez chaque livraison. Le client est prévenu à chaque changement de statut." />
       {requests.length > 0 && (
         <section aria-labelledby="delivery-price-requests" className="mb-6 space-y-3">
-          <h2 id="delivery-price-requests" className="text-lg font-semibold">Livraisons et retraits à confirmer</h2>
+          <h2 id="delivery-price-requests" className="text-lg font-semibold">Proformas à valider</h2>
           {requests.map((request) => {
             const data = request.data as unknown as QuoteData;
             const plan = fulfillmentFor(request, actor.lenderId);
             const schedule = scheduleOf(request.items, plan.deliverySlot ?? null, plan.returnSlot ?? null);
+            const group = data.groups.find((group) => group.lenderId === actor.lenderId)!;
+            const needsLogistics = data.logisticsApprovalIds?.includes(actor.lenderId) ?? true;
             return (
               <Card key={request.id} className="p-5">
                 <h3 className="font-semibold">{request.number}{data.buyer.event ? ` · ${data.buyer.event}` : ""}</h3>
@@ -64,7 +66,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
                     <li key={index}>{item.quantity} × {item.product.name} du {formatDate(item.startDate)} au {formatDate(item.endDate)}</li>
                   ))}
                 </ul>
-                <DeliveryPriceForm quoteId={request.id} pickup={plan.mode === "PICKUP"} outDate={schedule.outDate} backDate={schedule.backDate} eventDate={data.eventDate} requestedDates={data.groups.find((group) => group.lenderId === actor.lenderId)?.requestedDates} preferredOut={schedule.outSlot} preferredBack={schedule.backSlot} />
+                <p className="mt-2 text-sm font-medium">Total estimé de votre part avant caution · {formatFcfa(group.rental + group.delivery)}</p>
+                <DeliveryPriceForm quoteId={request.id} pickup={plan.mode === "PICKUP"} outDate={schedule.outDate} backDate={schedule.backDate} eventDate={data.eventDate} requestedDates={group.requestedDates} estimatedDeposit={data.depositOverrides ? group.deposit : undefined} deliveryFee={group.delivery} needsLogistics={needsLogistics} preferredOut={schedule.outSlot} preferredBack={schedule.backSlot} />
               </Card>
             );
           })}

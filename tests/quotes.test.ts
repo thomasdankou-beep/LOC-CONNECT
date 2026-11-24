@@ -141,15 +141,17 @@ describe("proforma", () => {
     await expect(confirmDeliveryPrice(l.actor, quote.id, { amount: 15000, deliveryDate: day(8), returnDate: day(11), deliverySlot: "10:00-12:00", returnSlot: "18:00-20:00" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     await expect(confirmDeliveryPrice(l.actor, quote.id, { amount: 15000, deliveryDate: day(9), returnDate: day(12), deliverySlot: "10:00-12:00", returnSlot: "18:00-20:00" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     await confirmDeliveryPrice(l.actor, quote.id, { amount: 15000, deliveryDate: day(9), returnDate: day(11), deliverySlot: "10:00-12:00", returnSlot: "18:00-20:00" });
+    await confirmDeliveryPrice(pickup.actor, quote.id, { depositOnly: true, depositAmount: 8000 });
     const ready = await getQuoteForActor(client.actor, quote.id);
     expect(ready.data.groups).toEqual(expect.arrayContaining([
-      expect.objectContaining({ lenderId: l.lender.id, fulfillment: "DELIVERY", delivery: 15000, rental: 340000, schedule: { outDate: day(9), outSlot: "10:00-12:00", backDate: day(11), backSlot: "18:00-20:00" } }),
-      expect.objectContaining({ lenderId: pickup.lender.id, fulfillment: "PICKUP", delivery: 0, schedule: { outDate: day(11), outSlot: "08:00-10:00", backDate: day(12), backSlot: "16:00-18:00" } }),
+      expect.objectContaining({ lenderId: l.lender.id, fulfillment: "DELIVERY", delivery: 15000, rental: 340000, deposit: 106500, schedule: { outDate: day(9), outSlot: "10:00-12:00", backDate: day(11), backSlot: "18:00-20:00" } }),
+      expect.objectContaining({ lenderId: pickup.lender.id, fulfillment: "PICKUP", delivery: 0, deposit: 8000, schedule: { outDate: day(11), outSlot: "08:00-10:00", backDate: day(12), backSlot: "16:00-18:00" } }),
     ]));
 
     const hold = await payQuote(client.user.id, quote.id, { accept: true });
     const reservation = await payHold(client, hold.id);
     expect(reservation.total).toBe(ready.quote.total);
+    expect(reservation.depositTotal).toBe(114500);
     expect(reservation.deliveries).toHaveLength(1);
     expect(reservation.deliveries[0]).toMatchObject({ lenderId: l.lender.id, fee: 15000, slotStart: "10:00", slotEnd: "12:00", returnSlotStart: "18:00", returnSlotEnd: "20:00" });
     expect(reservation.deliveries[0].scheduledDate?.toISOString().slice(0, 10)).toBe(day(9));
@@ -195,8 +197,8 @@ describe("proforma", () => {
       ["Le comptoir duo", 50_000, 175_000, 50_000],
       ["Transport (livraison et récupération)", 3_000, undefined, 3_000],
     ]);
-    expect(data.totals).toEqual({ rental: 170_000, delivery: 3_000, totalRental: 173_000, deposit: 50_000, netToPay: 223_000, online: 223_000, cash: 0 });
-    expect(quote).toMatchObject({ total: 223_000, netToPay: 223_000 });
+    expect(data.totals).toEqual({ rental: 170_000, delivery: 3_000, totalRental: 173_000, deposit: 51_900, netToPay: 224_900, online: 224_900, cash: 0 });
+    expect(quote).toMatchObject({ total: 224_900, netToPay: 224_900 });
     expect(data.schedule).toEqual({ outDate: day(10), outSlot: "14:00-16:00", backDate: day(11), backSlot: "08:00-10:00" });
     expect(data.buyer).toMatchObject({ name: "Molly Test", phone: "+225 07 00 00 00 00", event: "STORY FOAM" });
     expect(g.seller).toMatchObject({ shareCapital: 1_000_000, postalAddress: "18 BP 1470 Abidjan 18", rccm: "CI-ABJ-2018-B-03065" });
@@ -204,12 +206,13 @@ describe("proforma", () => {
 
     // Le panier reste intact : la proforma n'est qu'un document.
     expect(await db.cartItem.count({ where: { cart: { userId: client.user.id } } })).toBe(2);
-    expect((await getQuoteForActor(client.actor, quote.id)).status).toBe("OPEN");
+    expect((await getQuoteForActor(client.actor, quote.id)).status).toBe("AWAITING_DELIVERY");
   });
 
   it("payée depuis son lien : même montant, créneaux transmis à la livraison et à la facture, puis marquée payée", async () => {
-    const { client, input } = await cartWithCounters();
+    const { l, client, input } = await cartWithCounters();
     const quote = await createQuote(client.user.id, input);
+    await confirmDeliveryPrice(l.actor, quote.id, { depositOnly: true });
     await db.cartItem.deleteMany({ where: { cart: { userId: client.user.id } } });
 
     const hold = await payQuote(client.user.id, quote.id, { accept: true });
@@ -238,8 +241,9 @@ describe("proforma", () => {
   });
 
   it("refuse le paiement si les prix ont changé ou si la proforma a expiré", async () => {
-    const { client, input, trio } = await cartWithCounters();
+    const { l, client, input, trio } = await cartWithCounters();
     const quote = await createQuote(client.user.id, input);
+    await confirmDeliveryPrice(l.actor, quote.id, { depositOnly: true });
     await db.product.update({ where: { id: trio.id }, data: { unitPrice: 130_000 } });
     await expect(payQuote(client.user.id, quote.id, { accept: true })).rejects.toMatchObject({ code: "PRICE_CHANGED" });
 
@@ -250,8 +254,9 @@ describe("proforma", () => {
   });
 
   it("un prix modifié entre le blocage et la réservation est aussi refusé", async () => {
-    const { client, input, duo } = await cartWithCounters();
+    const { l, client, input, duo } = await cartWithCounters();
     const quote = await createQuote(client.user.id, input);
+    await confirmDeliveryPrice(l.actor, quote.id, { depositOnly: true });
     const hold = await payQuote(client.user.id, quote.id, { accept: true });
     await db.product.update({ where: { id: duo.id }, data: { unitPrice: 40_000 } });
     await expect(createReservationFromHold(client.user.id, hold.id)).rejects.toMatchObject({ code: "PRICE_CHANGED" });
@@ -262,8 +267,8 @@ describe("proforma", () => {
     await db.lender.update({ where: { id: l.lender.id }, data: { cashModeAllowed: true, paymentMode: "DEPOSIT_CASH" } });
     const quote = await createQuote(client.user.id, input);
     const data = quote.data as unknown as QuoteData;
-    expect(data.totals.netToPay).toBe(223_000);
-    expect(data.totals.online + data.totals.cash).toBe(223_000);
+    expect(data.totals.netToPay).toBe(224_900);
+    expect(data.totals.online + data.totals.cash).toBe(224_900);
     expect(data.totals.cash).toBeGreaterThan(0);
     expect(data.notes.some((n) => n.startsWith("Acompte de"))).toBe(true);
   });

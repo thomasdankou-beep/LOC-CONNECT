@@ -5,7 +5,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api-client";
 import { addDays, daysBetween, formatRentalPeriod, parseDate } from "@/lib/dates";
-import { formatFcfa } from "@/lib/money";
+import { formatFcfa, prorate } from "@/lib/money";
+import { DEFAULT_LENDER_DEPOSIT_PERCENT } from "@/services/pricing";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/states";
@@ -17,11 +18,6 @@ type Props = {
   productId: string;
   returnBufferDays: number;
   unitPrice: number;
-  deposit: number;
-  /** Caution en % de la location (null : caution fixe par unité). */
-  depositPercent: number | null;
-  /** Caution minimale par unité (plancher en % de la valeur du matériel), 0 si aucun. */
-  depositFloorUnit: number;
   stock: number;
   minDays: number;
   maxDays: number | null;
@@ -31,7 +27,7 @@ type Props = {
   initialEnd?: string;
 };
 
-export function BookingPanel({ productId, returnBufferDays, unitPrice, deposit, depositPercent, depositFloorUnit, stock, minDays, maxDays, signedIn, canBook, initialStart, initialEnd }: Props) {
+export function BookingPanel({ productId, returnBufferDays, unitPrice, stock, minDays, maxDays, signedIn, canBook, initialStart, initialEnd }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const [start, setStart] = useState<string | null>(initialStart ?? null);
@@ -54,9 +50,7 @@ export function BookingPanel({ productId, returnBufferDays, unitPrice, deposit, 
 
   const tooLong = maxDays != null && days > maxDays;
   const rental = unitPrice * qty * days;
-  const fromRental = depositPercent != null ? Math.round((rental * depositPercent) / 100) : 0;
-  const floorApplies = depositPercent != null && days > 0 && depositFloorUnit * qty > fromRental;
-  const depositTotal = depositPercent != null ? Math.max(fromRental, depositFloorUnit * qty) : deposit * qty;
+  const depositTotal = prorate(rental, DEFAULT_LENDER_DEPOSIT_PERCENT, 100);
   const total = rental + depositTotal;
 
   async function add(go: boolean) {
@@ -122,12 +116,12 @@ export function BookingPanel({ productId, returnBufferDays, unitPrice, deposit, 
           <dd className="tabular-nums text-ink">{days > 0 ? formatFcfa(rental) : "À calculer"}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="flex items-center gap-1.5 text-muted"><ShieldCheck size={16} /> Caution{depositPercent != null ? (floorApplies ? " (minimum pour ce matériel)" : ` (${depositPercent} %)`) : ""}, restituée au retour</dt>
-          <dd className="tabular-nums text-ink">{depositPercent != null && days === 0 ? "À calculer" : formatFcfa(depositTotal)}</dd>
+          <dt className="flex items-center gap-1.5 text-muted"><ShieldCheck size={16} /> Caution estimée hors livraison</dt>
+          <dd className="tabular-nums text-ink">{days === 0 ? "À calculer" : formatFcfa(depositTotal)}</dd>
         </div>
         <div className="flex justify-between border-t border-line pt-3 text-base font-semibold">
-          <dt className="text-ink">Total à payer</dt>
-          <dd className="tabular-nums text-ink">{days > 0 ? formatFcfa(total) : depositPercent != null ? "À calculer" : formatFcfa(depositTotal)}</dd>
+          <dt className="text-ink">Total estimé hors livraison</dt>
+          <dd className="tabular-nums text-ink">{days > 0 ? formatFcfa(total) : "À calculer"}</dd>
         </div>
       </dl>
       <p className="mt-2 text-xs text-muted">Les montants sont recalculés par le serveur au moment de la réservation.</p>
