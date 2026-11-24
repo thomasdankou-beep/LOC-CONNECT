@@ -40,10 +40,16 @@ export function assertQuotePricing(quote: { number: string; data: unknown; total
   }
 }
 
-/** An absent snapshot identifies proformas issued under the former pricing rule. */
-export function quoteDeposits(data: unknown): Map<string, number> | null {
-  const overrides = (data as { depositOverrides?: [string, number][] } | null | undefined)?.depositOverrides;
-  return overrides ? new Map(overrides) : null;
+export type QuotedDeposits = {
+  overrides: ReadonlyMap<string, number>;
+  includesTransport: boolean;
+};
+
+/** Rejoue le calcul d'origine pour les proformas déjà établies. */
+export function quoteDeposits(data: unknown): QuotedDeposits | null {
+  const snapshot = data as { depositOverrides?: [string, number][]; depositExcludesTransport?: true } | null | undefined;
+  if (!snapshot?.depositOverrides) return null;
+  return { overrides: new Map(snapshot.depositOverrides), includesTransport: !snapshot.depositExcludesTransport };
 }
 
 export type QuotedDelivery = { pendingLenderIds: string[]; approvedFees: [string, number][] };
