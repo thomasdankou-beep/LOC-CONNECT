@@ -823,6 +823,7 @@ model ReservationItem {
   refundPrice         Int
   allowsExtraBilling  Boolean           @default(true)
   status              ReservationStatus @default(PENDING_PAYMENT)
+  handoverCheck       Json?
   cancelledAt         DateTime?
   refundedRental      Int               @default(0)
   createdAt           DateTime          @default(now())
@@ -1175,6 +1176,7 @@ model ReturnReport {
   lostQuantity      Int                @default(0)
   condition         ReturnCondition
   comment           String?
+  materialCheck     Json?
   refundPrice       Int
   damageAmount      Int                @default(0)
   withheldAmount    Int                @default(0)

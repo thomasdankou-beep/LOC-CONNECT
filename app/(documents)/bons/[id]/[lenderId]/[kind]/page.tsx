@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { pageActor } from "@/lib/auth/page";
 import { AppError } from "@/lib/errors";
 import { formatDate, formatDateTime, formatRentalPeriod } from "@/lib/dates";
+import { readHandover, readReturnCheck, returnCheckLabels } from "@/lib/material-check";
 import { RESERVATION_STATUS, RETURN_REPORT_STATUS } from "@/lib/labels";
 import { getReservationDetail } from "@/services/reservations";
 import { scheduleOf } from "@/services/invoices";
@@ -57,24 +58,44 @@ export default async function Page({ params }: { params: Promise<{ id: string; l
           <div><dt className="font-semibold">{pickup ? "Retrait" : "Livraison"} prévue</dt><dd>{formatDate(outDate)}{schedule.outSlot && ` · ${schedule.outSlot}`}</dd></div>
           <div><dt className="font-semibold">{pickup ? "Retour" : "Récupération"} prévue</dt><dd>{formatDate(backDate)}{schedule.backSlot && ` · ${schedule.backSlot}`}</dd></div>
         </dl>
-        {kind === "remise" && <p className="mb-3 text-sm text-muted">{delivery?.deliveredAt ? `Livraison enregistrée le ${formatDateTime(delivery.deliveredAt)}. ` : ""}Les quantités remises et leur état sont à renseigner lors de la remise.</p>}
+        {kind === "remise" && <p className="mb-3 text-sm text-muted">{delivery?.deliveredAt ? `Livraison enregistrée le ${formatDateTime(delivery.deliveredAt)}. ` : ""}Le tableau reprend les contrôles de remise enregistrés par le loueur.</p>}
         <div className="overflow-x-auto print:overflow-visible">
           <table className="w-full text-left text-sm print:text-xs">
             <thead className="bg-surface-2"><tr><th scope="col" className={cell}>Matériel</th>{columns.map((column) => <th scope="col" className={cell} key={column}>{column}</th>)}</tr></thead>
             <tbody>
               {items.map((item) => {
                 const report = item.returnReport;
+                const handover = readHandover(item.handoverCheck);
+                const material = readReturnCheck(report?.materialCheck);
                 return (
                   <tr key={item.id} className="break-inside-avoid">
                     <th scope="row" className={cell}><span className="font-medium">{item.productName}</span><span className="block text-xs font-normal text-muted">{formatRentalPeriod(item.startDate, item.endDate)}</span></th>
                     <td className={cell}>{kind === "retour" ? report?.rentedQuantity ?? item.quantity : item.quantity}</td>
                     {kind === "preparation" && <><td className={cell}>{RESERVATION_STATUS[item.status].label}</td><td className={cell}>☐</td></>}
-                    {kind === "remise" && <><td className={cell}>______</td><td className={cell}>________________</td></>}
+                    {kind === "remise" && (handover ? <>
+                      <td className={cell}>{handover.quantity}</td>
+                      <td className={`${cell} break-words`}>
+                        <p>{handover.condition === "GOOD" ? "Bon état" : "Avec réserves"}</p>
+                        <p>Réception par {handover.recipient} · {formatDateTime(handover.recordedAt)}</p>
+                        {handover.packaging && <p>Emballages remis · {handover.packaging}</p>}
+                        {handover.accessories && <p>Accessoires remis · {handover.accessories}</p>}
+                        {handover.notes && <p className="whitespace-pre-wrap">{handover.notes}</p>}
+                      </td>
+                    </> : <td className={cell} colSpan={2}>Contrôle non enregistré</td>)}
                     {kind === "retour" && (report ? <>
                       <td className={cell}>{report.returnedQuantity}</td>
                       <td className={cell}>{report.damagedQuantity}</td>
                       <td className={cell}>{report.lostQuantity}</td>
-                      <td className={cell}>{RETURN_REPORT_STATUS[report.status].label}{report.comment && <p>{report.comment}</p>}</td>
+                      <td className={`${cell} break-words`}>
+                        {RETURN_REPORT_STATUS[report.status].label}
+                        {handover && <p>Quantité remise · {handover.quantity}</p>}
+                        {report.comment && <p className="whitespace-pre-wrap">{report.comment}</p>}
+                        {material && <>
+                          <p>Emballages · {returnCheckLabels[material.packaging]}</p>
+                          <p>Accessoires · {returnCheckLabels[material.accessories]}</p>
+                          {material.notes && <p className="whitespace-pre-wrap">{material.notes}</p>}
+                        </>}
+                      </td>
                     </> : <td className={cell} colSpan={4}>Constat en attente</td>)}
                   </tr>
                 );

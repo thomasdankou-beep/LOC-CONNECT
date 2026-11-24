@@ -1,11 +1,12 @@
 import type { Payment, ReturnCondition } from "@prisma/client";
 import { formatFcfa } from "@/lib/money";
 import { z } from "zod";
-import { db, lockProducts, transaction, type Tx } from "@/lib/db";
+import { db, lockProducts, lockReservation, transaction, type Tx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { addHours } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
+import { quantityToReturn, returnCheckInput } from "@/lib/material-check";
 import { can, type Actor } from "@/lib/auth/actor";
 import { addBalanceEntry, executeRefund, recordTransaction } from "./finance";
 import { issueDamageInvoice } from "./invoices";
@@ -18,6 +19,7 @@ export const returnReportInput = z.object({
   damagedQuantity: z.number().int().min(0).default(0),
   condition: z.enum(["EXCELLENT", "GOOD", "FAIR", "DAMAGED", "LOST"]).default("GOOD"),
   comment: z.string().trim().max(1000).optional(),
+  materialCheck: returnCheckInput.optional(),
   /** Montant estimé des dommages pour les unités endommagées (hors unités perdues, calculées au prix de remboursement). */
   damageAmount: z.number().int().min(0).default(0),
 });
@@ -36,14 +38,14 @@ export function computeReturnAmounts(p: { quantity: number; lostQuantity: number
 
 export function validateReturnQuantities(quantity: number, i: Pick<ReturnReportInput, "returnedQuantity" | "lostQuantity" | "damagedQuantity">): void {
   if (i.returnedQuantity + i.lostQuantity !== quantity) {
-    throw new AppError("VALIDATION_ERROR", `La quantité retournée (${i.returnedQuantity}) et la quantité perdue (${i.lostQuantity}) doivent totaliser la quantité louée (${quantity}).`);
+    throw new AppError("VALIDATION_ERROR", `La quantité retournée (${i.returnedQuantity}) et la quantité perdue (${i.lostQuantity}) doivent totaliser la quantité attendue au retour (${quantity}).`);
   }
   if (i.damagedQuantity > i.returnedQuantity) throw new AppError("VALIDATION_ERROR", "La quantité endommagée ne peut pas dépasser la quantité retournée.");
-  if (i.damagedQuantity + i.lostQuantity > quantity) throw new AppError("VALIDATION_ERROR", "Quantité endommagée + perdue supérieure à la quantité louée.");
+  if (i.damagedQuantity + i.lostQuantity > quantity) throw new AppError("VALIDATION_ERROR", "Quantité endommagée + perdue supérieure à la quantité attendue au retour.");
 }
 
 function deriveCondition(i: ReturnReportInput, quantity: number): ReturnCondition {
-  if (i.lostQuantity >= quantity) return "LOST";
+  if (quantity > 0 && i.lostQuantity >= quantity) return "LOST";
   if (i.lostQuantity > 0 || i.damagedQuantity > 0) return "DAMAGED";
   return i.condition === "DAMAGED" || i.condition === "LOST" ? "FAIR" : i.condition;
 }
@@ -58,13 +60,18 @@ export async function createReturnReport(actor: Actor & { lenderId: string }, it
   const settings = await getSettings();
 
   return transaction(async (tx) => {
-    const item = await tx.reservationItem.findFirst({ where: { id: itemId, lenderId: actor.lenderId }, include: { deposit: true, reservation: true, returnReport: true } });
+    const where = { id: itemId, lenderId: actor.lenderId };
+    const identity = await tx.reservationItem.findFirst({ where, select: { reservationId: true } });
+    if (!identity) throw notFound("Ligne de réservation");
+    await lockReservation(tx, identity.reservationId);
+    const item = await tx.reservationItem.findFirst({ where, include: { deposit: true, reservation: true, returnReport: true } });
     if (!item) throw notFound("Ligne de réservation");
     if (item.returnReport) throw new AppError("CONFLICT", "Un constat de retour existe déjà pour cette ligne.");
     if (!["IN_USE", "RETURN_PENDING"].includes(item.status)) throw new AppError("INVALID_TRANSITION", "Le constat n'est possible que pour une location en cours ou en attente de retour.");
     if (!item.deposit) throw new AppError("CONFLICT", "Aucune caution rattachée à cette ligne.");
 
-    validateReturnQuantities(item.quantity, input);
+    const expected = quantityToReturn(item);
+    validateReturnQuantities(expected, input);
     if (input.damagedQuantity === 0 && input.damageAmount > 0) throw new AppError("VALIDATION_ERROR", "Un montant de dommages exige au moins une unité endommagée.");
     if (input.damagedQuantity > 0 && input.damageAmount === 0) throw new AppError("VALIDATION_ERROR", "Indiquez le montant estimé des dommages.");
     if (input.damageAmount > input.damagedQuantity * item.refundPrice) throw new AppError("VALIDATION_ERROR", "Le montant des dommages dépasse le prix de remboursement des unités endommagées.");
@@ -83,7 +90,8 @@ export async function createReturnReport(actor: Actor & { lenderId: string }, it
         returnedQuantity: input.returnedQuantity,
         damagedQuantity: input.damagedQuantity,
         lostQuantity: input.lostQuantity,
-        condition: deriveCondition(input, item.quantity),
+        condition: deriveCondition(input, expected),
+        materialCheck: input.materialCheck,
         comment: input.comment,
         refundPrice: item.refundPrice,
         damageAmount: input.damageAmount,
@@ -95,7 +103,7 @@ export async function createReturnReport(actor: Actor & { lenderId: string }, it
     });
     if (photos.length) await tx.returnPhoto.createMany({ data: photos.map((p) => ({ reportId: report.id, storageKey: p.key, mimeType: p.mimeType, uploadedById: actor.userId })) });
     await transitionItems(tx, item.reservationId, "RETURNED", { actorId: actor.userId, itemIds: [itemId], note: "Constat de retour" });
-    await audit(tx, { userId: actor.userId, lenderId: actor.lenderId, action: "return.report", entity: "ReturnReport", entityId: report.id, newValue: { ...amounts, photos: photos.length }, meta: actor.meta });
+    await audit(tx, { userId: actor.userId, lenderId: actor.lenderId, action: "return.report", entity: "ReturnReport", entityId: report.id, newValue: { ...amounts, photos: photos.length, materialCheck: input.materialCheck }, meta: actor.meta });
 
     if (amounts.totalDamage === 0) {
       await settleReport(tx, report.id, { actorId: actor.userId, note: "Retour conforme" });

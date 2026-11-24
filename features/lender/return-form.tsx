@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api-client";
+import { returnCheckLabels, type readHandover } from "@/lib/material-check";
 import { formatFcfa } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/field";
@@ -11,7 +12,7 @@ import { Modal } from "@/components/ui/modal";
 import { Notice } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 
-export type ReturnItem = { id: string; productName: string; quantity: number; refundPrice: number; depositAmount: number; allowsExtraBilling: boolean; reference: string };
+export type ReturnItem = { id: string; productName: string; quantity: number; refundPrice: number; depositAmount: number; allowsExtraBilling: boolean; reference: string; handover?: ReturnType<typeof readHandover> };
 
 /** Constat de retour : quantités retournées, perdues, endommagées, preuves photo. Calcul de la retenue en direct (le serveur recalcule). */
 export function ReturnReportButton({ item, evidenceRequired, canPhoto, canDamage, defaultOpen = false }: { item: ReturnItem; evidenceRequired: boolean; canPhoto: boolean; canDamage: boolean; defaultOpen?: boolean }) {
@@ -37,7 +38,8 @@ export function ReturnReportButton({ item, evidenceRequired, canPhoto, canDamage
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const form = new FormData();
-    form.set("data", JSON.stringify({ returnedQuantity: returned, lostQuantity: lost, damagedQuantity: damaged, condition: String(fd.get("condition") || "GOOD"), comment: String(fd.get("comment") ?? "").trim() || undefined, damageAmount }));
+    const materialCheck = { packaging: fd.get("packaging"), accessories: fd.get("accessories"), notes: fd.get("materialNotes") };
+    form.set("data", JSON.stringify({ materialCheck, returnedQuantity: returned, lostQuantity: lost, damagedQuantity: damaged, condition: String(fd.get("condition") || "GOOD"), comment: String(fd.get("comment") ?? "").trim() || undefined, damageAmount }));
     for (const f of fd.getAll("photos")) if (f instanceof File && f.size > 0) form.append("photos", f);
     setPending(true);
     setError(null);
@@ -58,7 +60,7 @@ export function ReturnReportButton({ item, evidenceRequired, canPhoto, canDamage
   return (
     <>
       <Button size="sm" onClick={() => setOpen(true)}>Constater le retour</Button>
-      <Modal open={open} onClose={() => setOpen(false)} size="lg" title={`Constat de retour : ${item.productName}`} description={`Réservation ${item.reference}, ${item.quantity} unité${item.quantity > 1 ? "s" : ""} louée${item.quantity > 1 ? "s" : ""}.`}>
+      <Modal open={open} onClose={() => setOpen(false)} size="lg" title={`Constat de retour : ${item.productName}`} description={`Réservation ${item.reference}, ${item.quantity} unité${item.quantity > 1 ? "s" : ""} attendue${item.quantity > 1 ? "s" : ""} au retour.`}>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <div className="grid items-start gap-4 sm:grid-cols-3">
             <Input label="Unités perdues" type="number" min={0} max={item.quantity} value={lost} onChange={(e) => { const v = Math.max(0, Math.min(item.quantity, Number(e.target.value) || 0)); setLost(v); if (damaged > item.quantity - v) setDamaged(item.quantity - v); }} disabled={!canDamage} hint={`Remboursées ${formatFcfa(item.refundPrice)} l'unité`} />
@@ -71,6 +73,21 @@ export function ReturnReportButton({ item, evidenceRequired, canPhoto, canDamage
             <option value="FAIR">Correct</option>
           </Select>
           <Textarea label="Commentaire" name="comment" rows={3} placeholder="Observations sur l'état du matériel" />
+          <fieldset className="space-y-3 rounded-control border border-line p-3">
+            <legend className="px-1 text-sm font-medium">Emballages et accessoires</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Select name="packaging" label="État des emballages" defaultValue="" hint={item.handover?.packaging ? `Remis : ${item.handover.packaging}` : undefined} required>
+                <option value="" disabled>Choisir un état</option>
+                {Object.entries(returnCheckLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </Select>
+              <Select name="accessories" label="État des accessoires" defaultValue="" hint={item.handover?.accessories ? `Remis : ${item.handover.accessories}` : undefined} required>
+                <option value="" disabled>Choisir un état</option>
+                {Object.entries(returnCheckLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </Select>
+            </div>
+            <Textarea name="materialNotes" label="Détail des écarts" maxLength={1000} rows={2} />
+            <p className="text-xs text-muted">Ces observations figurent sur le bon de retour. La retenue se calcule à partir des pertes et dommages saisis plus haut.</p>
+          </fieldset>
           {canPhoto && <FilePicker name="photos" multiple label={`Photos de preuve ${totalDamage > 0 && evidenceRequired ? "(obligatoires)" : "(facultatives)"}`} hint="8 photos maximum. Elles restent privées : client, vous et administration." onCount={setPhotos} />}
 
           <div className="rounded-control bg-surface-2/60 p-4 text-sm">
@@ -83,7 +100,7 @@ export function ReturnReportButton({ item, evidenceRequired, canPhoto, canDamage
             {totalDamage > 0 ? <p className="mt-2 text-xs text-muted">Le client dispose d&apos;un délai pour accepter ou contester. La caution et la retenue restent bloquées pendant ce délai.</p> : <p className="mt-2 text-xs text-muted">Sans dommage, la caution est restituée immédiatement.</p>}
           </div>
           {needsEvidence && <Notice tone="warning">Ajoutez au moins une photo pour retenir une partie de la caution.</Notice>}
-          {error && !error.details?.length && <Notice tone="danger">{error.message}</Notice>}
+          {error && <Notice tone="danger">{error.message}</Notice>}
           <div className="sticky bottom-0 -mx-5 -mb-4 flex justify-end gap-2 border-t border-line bg-surface px-5 py-3"><Button variant="secondary" onClick={() => setOpen(false)}>Annuler</Button><Button type="submit" loading={pending} disabled={needsEvidence}>Enregistrer le constat</Button></div>
         </form>
       </Modal>
