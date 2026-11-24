@@ -19,6 +19,7 @@ import { ArrowLeft, Truck } from "@/components/ui/icons";
 import { CancelButton } from "@/features/reservations/client-actions";
 import { AdminRefund, ModificationAdminActions, StatusCorrection } from "@/features/admin/reservation-actions";
 import { AdminCashActions } from "@/features/cash/cash-cards";
+import { ReservationOperationalCard } from "@/features/invoices/reservation-operational-card";
 import { ReservationInvoicesCard } from "@/features/invoices/reservation-invoices-card";
 
 export const metadata: Metadata = { title: "Réservation", robots: { index: false } };
@@ -146,6 +147,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               {r.cashTotal > 0 && <div className="flex justify-between font-semibold"><dt>En espèces aux loueurs</dt><dd><Money value={r.cashTotal} /></dd></div>}
             </dl>
           </Card>
+          <ReservationOperationalCard actor={actor} reservation={r} />
           <ReservationInvoicesCard actor={actor} reservationId={r.id} />
           <Card className="p-5">
             <h2 className="text-base font-semibold text-ink">Paiements</h2>

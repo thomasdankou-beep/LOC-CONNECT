@@ -23,6 +23,7 @@ import { AuxPaymentButton } from "@/features/reservations/aux-payment";
 import { CancelButton, DisputeButton, ModificationButton, ReturnReportActions, ReviewButton } from "@/features/reservations/client-actions";
 import { nextActionForClient } from "@/features/reservations/helpers";
 import { ClientCashBox } from "@/features/cash/cash-cards";
+import { ReservationOperationalCard } from "@/features/invoices/reservation-operational-card";
 import { ReservationInvoicesCard } from "@/features/invoices/reservation-invoices-card";
 
 
@@ -236,6 +237,7 @@ export default async function ReservationDetailPage({ params }: { params: Promis
             </dl>
           </Card>
 
+          <ReservationOperationalCard actor={actor} reservation={r} />
           <ReservationInvoicesCard actor={actor} reservationId={r.id} />
 
           <Card className="p-5">
