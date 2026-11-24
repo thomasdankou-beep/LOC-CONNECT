@@ -58,7 +58,7 @@ export async function CatalogResults({ params, basePath, lockedCategory, lockedC
 
   return (
     <div className="grid gap-8 lg:grid-cols-[19rem_1fr]">
-      <CatalogFilters values={values} categories={categories.map((c) => ({ slug: c.slug, name: c.name, children: c.children.map((ch) => ({ slug: ch.slug, name: ch.name })) }))} cities={cities.map((c) => ({ slug: c.slug, name: c.name }))} basePath={basePath} />
+      <CatalogFilters values={values} categories={lockedCategory ? [] : categories.map((c) => ({ slug: c.slug, name: c.name, children: c.children.map((ch) => ({ slug: ch.slug, name: ch.name })) }))} cities={lockedCity ? [] : cities.map((c) => ({ slug: c.slug, name: c.name }))} basePath={basePath} />
       <section aria-live="polite">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <p className="text-[15px] text-muted">
