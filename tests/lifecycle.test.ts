@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { Signature } from "@/lib/signature";
 import { db } from "@/lib/db";
 import { recordHandover } from "@/services/handover";
 import { lenderAdvance } from "@/services/reservations";
@@ -52,15 +53,17 @@ describe("cycle de location complet", () => {
   it("compare le retour à la quantité réellement remise et conserve le contrôle des accessoires", async () => {
     const { lender, item } = await rentedAndInUse();
     const outsider = await makeLender(base.city.id);
+    const signature: Signature = [[[30, 60], [70, 30]]];
     const handover = {
-      quantity: 1, condition: "GOOD" as const, recipient: "Réception",
+      signature, quantity: 1, condition: "GOOD" as const, recipient: "Réception",
       packaging: "1 housse", accessories: "2 câbles", notes: "La seconde unité n’a pas été remise.",
     };
     await expect(recordHandover(outsider.actor, item.id, handover)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(recordHandover(lender.actor, item.id, { ...handover, quantity: 3 })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
-    await expect(recordHandover(lender.actor, item.id, handover)).resolves.toMatchObject({ quantity: 1, packaging: "1 housse" });
+    await expect(recordHandover(lender.actor, item.id, handover)).resolves.toMatchObject({ quantity: 1, packaging: "1 housse", signature });
+    await expect(recordHandover(lender.actor, item.id, { ...handover, signature: undefined })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
 
-    const materialCheck = { packaging: "COMPLETE" as const, accessories: "INCOMPLETE" as const, notes: "Un câble manquant." };
+    const materialCheck = { packaging: "COMPLETE" as const, accessories: "INCOMPLETE" as const, notes: "Un câble manquant.", signedBy: { name: "Client", signature } };
     await expect(createReturnReport(lender.actor, item.id, { returnedQuantity: 2, materialCheck }, [])).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     const report = await createReturnReport(lender.actor, item.id, { returnedQuantity: 1, materialCheck }, []);
     expect(report).toMatchObject({ rentedQuantity: 2, returnedQuantity: 1, lostQuantity: 0, materialCheck, withheldAmount: 0 });
