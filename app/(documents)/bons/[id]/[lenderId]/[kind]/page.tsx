@@ -8,6 +8,7 @@ import { readHandover, readReturnCheck, returnCheckLabels } from "@/lib/material
 import { RESERVATION_STATUS, RETURN_REPORT_STATUS } from "@/lib/labels";
 import { getReservationDetail } from "@/services/reservations";
 import { scheduleOf } from "@/services/invoices";
+import { SignatureTrace } from "@/components/ui/signature-trace";
 import { PrintButton } from "@/features/invoices/print-button";
 import { reservationHref } from "@/features/invoices/helpers";
 import { operationalDocuments } from "@/features/invoices/operational-documents";
@@ -80,6 +81,12 @@ export default async function Page({ params }: { params: Promise<{ id: string; l
                         {handover.packaging && <p>Emballages remis · {handover.packaging}</p>}
                         {handover.accessories && <p>Accessoires remis · {handover.accessories}</p>}
                         {handover.notes && <p className="whitespace-pre-wrap">{handover.notes}</p>}
+                        {handover.signature && (
+                          <figure className="mt-2">
+                            <figcaption className="text-xs text-muted">Signature à la remise</figcaption>
+                            <SignatureTrace strokes={handover.signature} className="h-12 w-40 max-w-full" />
+                          </figure>
+                        )}
                       </td>
                     </> : <td className={cell} colSpan={2}>Contrôle non enregistré</td>)}
                     {kind === "retour" && (report ? <>
@@ -94,6 +101,12 @@ export default async function Page({ params }: { params: Promise<{ id: string; l
                           <p>Emballages · {returnCheckLabels[material.packaging]}</p>
                           <p>Accessoires · {returnCheckLabels[material.accessories]}</p>
                           {material.notes && <p className="whitespace-pre-wrap">{material.notes}</p>}
+                          {material.signedBy && (
+                            <figure className="mt-2">
+                              <figcaption className="text-xs text-muted">Signé par {material.signedBy.name} · {formatDateTime(report.createdAt)}</figcaption>
+                              <SignatureTrace strokes={material.signedBy.signature} className="h-12 w-40 max-w-full" />
+                            </figure>
+                          )}
                         </>}
                       </td>
                     </> : <td className={cell} colSpan={4}>Constat en attente</td>)}

@@ -5,6 +5,8 @@ import { useState } from "react";
 import { api, ApiError } from "@/lib/api-client";
 import { returnCheckLabels, type readHandover } from "@/lib/material-check";
 import { formatFcfa } from "@/lib/money";
+import { SignaturePad } from "@/components/ui/signature-pad";
+import type { Signature } from "@/lib/signature";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/field";
 import { FilePicker } from "@/components/ui/file-picker";
@@ -19,6 +21,7 @@ export function ReturnReportButton({ item, evidenceRequired, canPhoto, canDamage
   const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = useState(defaultOpen);
+  const [signature, setSignature] = useState<Signature>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [lost, setLost] = useState(0);
@@ -38,7 +41,15 @@ export function ReturnReportButton({ item, evidenceRequired, canPhoto, canDamage
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const form = new FormData();
-    const materialCheck = { packaging: fd.get("packaging"), accessories: fd.get("accessories"), notes: fd.get("materialNotes") };
+    const name = String(fd.get("signer") ?? "").trim();
+    if (signature.length && !name) {
+      setError(new ApiError("Indiquez le nom de la personne qui signe le retour.", "VALIDATION_ERROR", 400));
+      return;
+    }
+    const materialCheck = {
+      packaging: fd.get("packaging"), accessories: fd.get("accessories"), notes: fd.get("materialNotes"),
+      signedBy: signature.length ? { name, signature } : undefined,
+    };
     form.set("data", JSON.stringify({ materialCheck, returnedQuantity: returned, lostQuantity: lost, damagedQuantity: damaged, condition: String(fd.get("condition") || "GOOD"), comment: String(fd.get("comment") ?? "").trim() || undefined, damageAmount }));
     for (const f of fd.getAll("photos")) if (f instanceof File && f.size > 0) form.append("photos", f);
     setPending(true);
@@ -59,7 +70,7 @@ export function ReturnReportButton({ item, evidenceRequired, canPhoto, canDamage
 
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>Constater le retour</Button>
+      <Button size="sm" onClick={() => { setSignature([]); setOpen(true); }}>Constater le retour</Button>
       <Modal open={open} onClose={() => setOpen(false)} size="lg" title={`Constat de retour : ${item.productName}`} description={`Réservation ${item.reference}, ${item.quantity} unité${item.quantity > 1 ? "s" : ""} attendue${item.quantity > 1 ? "s" : ""} au retour.`}>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <div className="grid items-start gap-4 sm:grid-cols-3">
@@ -90,6 +101,12 @@ export function ReturnReportButton({ item, evidenceRequired, canPhoto, canDamage
           </fieldset>
           {canPhoto && <FilePicker name="photos" multiple label={`Photos de preuve ${totalDamage > 0 && evidenceRequired ? "(obligatoires)" : "(facultatives)"}`} hint="8 photos maximum. Elles restent privées : client, vous et administration." onCount={setPhotos} />}
 
+          {open && (
+            <div className="space-y-3">
+              <Input name="signer" label="Nom de la personne qui restitue le matériel" maxLength={120} required={signature.length > 0} />
+              <SignaturePad label="Signature lors du retour" strokes={signature} onChange={setSignature} />
+            </div>
+          )}
           <div className="rounded-control bg-surface-2/60 p-4 text-sm">
             <p className="font-medium text-ink">Effet sur la caution de {formatFcfa(item.depositAmount)}</p>
             <dl className="mt-2 space-y-1">

@@ -5,7 +5,7 @@ import { can, type Actor } from "@/lib/auth/actor";
 import { lockReservation, transaction } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { fulfillmentFor } from "@/lib/fulfillment";
-import { handoverInput } from "@/lib/material-check";
+import { handoverInput, readHandover } from "@/lib/material-check";
 
 export function canRecordHandover(actor: Actor, mode: "PICKUP" | "DELIVERY", status: ReservationStatus) {
   if (actor.accountType !== "LENDER" || !can(actor, "ORDER_VIEW")) return false;
@@ -27,6 +27,9 @@ export async function recordHandover(actor: Actor & { lenderId: string }, itemId
     if (input.quantity > item.quantity) throw new AppError("VALIDATION_ERROR", "La quantité remise ne peut pas dépasser la quantité réservée.");
     if ((input.quantity !== item.quantity || input.condition === "WITH_RESERVATIONS") && !input.notes) {
       throw new AppError("VALIDATION_ERROR", "Décrivez l’écart de quantité ou les réserves.");
+    }
+    if (readHandover(item.handoverCheck)?.signature && !input.signature) {
+      throw new AppError("VALIDATION_ERROR", "Faites signer à nouveau la fiche de remise corrigée.");
     }
     const handoverCheck = { ...input, recordedAt: new Date().toISOString() };
     await tx.reservationItem.update({ where: { id: itemId }, data: { handoverCheck } });
