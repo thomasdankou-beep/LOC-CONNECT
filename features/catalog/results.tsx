@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getActor } from "@/lib/auth/actor";
 import { db } from "@/lib/db";
-import { parseDate } from "@/lib/dates";
+import { addDays, formatDate, parseDate, toISODate } from "@/lib/dates";
 import { listCategoryTree, listCities, searchProducts, type ProductSort } from "@/services/catalog";
 import { EmptyState } from "@/components/ui/states";
 import { Pagination } from "@/components/ui/pagination";
@@ -11,17 +11,27 @@ import { CatalogFilters, type FilterValues } from "./filters";
 import { ProductCard } from "./product-card";
 import { SortSelect } from "./sort-select";
 
-export type CatalogParams = { q?: string; category?: string; city?: string; start?: string; end?: string; available?: string; min?: string; max?: string; sort?: string; page?: string };
+export type CatalogParams = { q?: string; category?: string; city?: string; start?: string; end?: string; dateMode?: string; rentalStart?: string; rentalLast?: string; available?: string; min?: string; max?: string; sort?: string; page?: string };
 
-const isDate = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
+function validDate(value?: string): string | undefined {
+  if (!value) return;
+  try { return toISODate(parseDate(value)); } catch { return; }
+}
 const num = (v?: string) => (v && /^\d+$/.test(v) ? Number(v) : undefined);
 
 /** Liste filtrée de produits : utilisée par /catalogue, /categories/[slug] et /villes/[slug]. */
 export async function CatalogResults({ params, basePath, lockedCategory, lockedCity, heading }: { params: CatalogParams; basePath: string; lockedCategory?: string; lockedCity?: string; heading?: React.ReactNode }) {
   const [actor, categories, cities] = await Promise.all([getActor(), listCategoryTree(), listCities()]);
-  const start = isDate(params.start);
-  const end = isDate(params.end);
+  const selectedMode = params.dateMode === "single" || params.dateMode === "multiple";
+  const start = validDate(selectedMode ? params.rentalStart : params.start);
+  const last = params.dateMode === "single" ? start : validDate(params.rentalLast);
+  const end = selectedMode
+    ? start && last && (params.dateMode === "single" || start < last)
+      ? validDate(toISODate(addDays(parseDate(last), 1)))
+      : undefined
+    : validDate(params.end);
   const validPeriod = start && end && start < end;
+  const selectedLast = validPeriod ? toISODate(addDays(parseDate(end), -1)) : undefined;
   const category = lockedCategory ?? params.category;
   const city = lockedCity ?? params.city;
   const page = Math.max(1, Number(params.page) || 1);
@@ -54,11 +64,11 @@ export async function CatalogResults({ params, basePath, lockedCategory, lockedC
           <p className="text-[15px] text-muted">
             {heading}
             <span className="font-medium text-ink">{result.total}</span> produit{result.total > 1 ? "s" : ""}
-            {validPeriod ? ` pour la période du ${start} au ${end}` : ""}
+            {validPeriod ? selectedLast === start ? ` · Le ${formatDate(start)}` : ` · Du ${formatDate(start)} au ${formatDate(selectedLast!)} inclus` : ""}
           </p>
           <SortSelect basePath={basePath} />
         </div>
-        {params.available === "1" && !validPeriod && <p className="mb-4 rounded-control bg-warn-soft px-3 py-2 text-sm text-ink">Choisissez une date de début et une date de fin pour filtrer par disponibilité.</p>}
+        {params.available === "1" && !validPeriod && <p className="mb-4 rounded-control bg-warn-soft px-3 py-2 text-sm text-ink">Sélectionnez le ou les jours de location pour filtrer par disponibilité.</p>}
         {result.items.length === 0 ? (
           <EmptyState
             icon={<MagnifyingGlass size={24} />}

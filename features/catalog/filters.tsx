@@ -7,6 +7,8 @@ import { Modal } from "@/components/ui/modal";
 import { SlidersHorizontal } from "@/components/ui/icons";
 import { toISODate, todayUTC } from "@/lib/dates";
 
+import { SearchDateFields } from "./search-date-fields";
+
 export type FilterValues = { q?: string; category?: string; city?: string; start?: string; end?: string; available?: string; min?: string; max?: string; sort?: string };
 type Cat = { slug: string; name: string; children: { slug: string; name: string }[] };
 
@@ -46,16 +48,8 @@ function Fields({ values, categories, cities }: { values: FilterValues; categori
           ))}
         </select>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label htmlFor="f-start" className={LABEL}>Début</label>
-          <input id="f-start" type="date" name="start" min={min} defaultValue={values.start} className={CONTROL} />
-        </div>
-        <div>
-          <label htmlFor="f-end" className={LABEL}>Fin</label>
-          <input id="f-end" type="date" name="end" min={min} defaultValue={values.end} className={CONTROL} />
-        </div>
-      </div>
+      <SearchDateFields key={`${values.start ?? ""}/${values.end ?? ""}`} start={values.start} end={values.end} min={min}
+        controlClass={CONTROL} labelClass={LABEL} className="min-w-0" />
       <label className="flex items-start gap-2.5 text-sm text-ink">
         <input type="checkbox" name="available" value="1" defaultChecked={values.available === "1"} className="mt-1 size-4 accent-[var(--lc-royal)]" />
         <span>Seulement les produits disponibles sur la période choisie</span>
