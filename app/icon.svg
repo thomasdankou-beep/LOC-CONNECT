@@ -1,1 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1f4fd6"/><text x="32" y="43" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" fill="#ffffff">LC</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-36 -30 480 480">
+  <title>LOC CONNECT</title>
+  <rect x="-36" y="-30" width="480" height="480" rx="76" fill="#fff" />
+  <path fill="#102D40" d="M87 83 C129 28 194 0 258 0 C316 0 367 22 402 61 C365 37 326 22 287 22 C183 22 111 114 106 207 C105 220 105 234 108 247 L87 247 Z M46 325 L129 325 C159 365 207 389 267 389 C321 389 371 362 407 322 C368 386 304 420 229 420 C154 420 88 383 46 325 Z" />
+  <path fill="#08765D" d="M0 63 L73 9 L73 257 L296 257 L241 317 L0 317 Z" />
+</svg>
