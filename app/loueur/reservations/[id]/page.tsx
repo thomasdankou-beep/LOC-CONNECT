@@ -21,6 +21,7 @@ import { ArrowLeft, MapPin, Phone, ShieldCheck, Truck } from "@/components/ui/ic
 import { AdvanceButton, ModificationDecision } from "@/features/lender/reservation-actions";
 import { nextLenderTarget } from "@/features/lender/helpers";
 import { LenderCashBox } from "@/features/cash/cash-cards";
+import { ReservationOperationalCard } from "@/features/invoices/reservation-operational-card";
 import { ReservationInvoicesCard } from "@/features/invoices/reservation-invoices-card";
 import { CASH_PERMISSIONS } from "@/services/cash";
 
@@ -222,6 +223,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </dl>
             <p className="mt-3 text-xs text-muted">{cashMode ? "Acompte en ligne + solde en espèces : la commission est déjà prélevée sur l'acompte. " : ""}{!cashMode || onlineNet > 0 ? `Versée ${freezeHours} h après la fin de la location, sauf litige ou contestation.` : ""}</p>
           </Card>
+          <ReservationOperationalCard actor={actor} reservation={r} />
           <ReservationInvoicesCard actor={actor} reservationId={r.id} />
           <Card className="p-5">
             <h2 className="text-base font-semibold text-ink">Suivi</h2>
