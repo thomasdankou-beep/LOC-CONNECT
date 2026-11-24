@@ -6,6 +6,7 @@ import { MapPin } from "@/components/ui/icons";
 import { Stars as StarsRating } from "@/components/ui/misc";
 import { formatFcfa } from "@/lib/money";
 import { getSettings } from "@/lib/settings";
+import { returnBufferDays } from "@/services/availability";
 import { depositFloorFrom, depositLabel, depositPercentFrom } from "@/services/pricing";
 import type { ProductCard as ProductCardData } from "@/services/catalog";
 import { FavoriteButton } from "./favorite-button";
@@ -60,7 +61,7 @@ export async function ProductCard({ product, signedIn, isClient, favorite = fals
           <LinkButton href={`/produits/${p.slug}${start && end ? `?start=${start}&end=${end}` : ""}`} size="sm" className="flex-1">
             Voir le produit
           </LinkButton>
-          {(!signedIn || isClient) && <QuickAdd productId={p.id} name={p.name} start={start} end={end} stock={p.stockQuantity} signedIn={signedIn} />}
+          {(!signedIn || isClient) && <QuickAdd productId={p.id} name={p.name} start={start} end={end} stock={p.stockQuantity} signedIn={signedIn} minDays={p.minDays} maxDays={p.maxDays} returnBufferDays={returnBufferDays(settings)} />}
         </div>
       </div>
     </article>
