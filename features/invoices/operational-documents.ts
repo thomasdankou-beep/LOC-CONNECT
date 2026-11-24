@@ -1,12 +1,13 @@
 import type { Actor } from "@/lib/auth/actor";
 import { fulfillmentFor } from "@/lib/fulfillment";
+import { isOperationalItem } from "@/services/handover-signatures";
 import type { ReservationDetail } from "@/services/reservations";
 
 export type OperationalKind = "preparation" | "remise" | "retour";
 
 export function operationalDocuments(actor: Actor, reservation: ReservationDetail, lenderId: string) {
   const items = reservation.items.filter((item) =>
-    item.lenderId === lenderId && !["DRAFT", "HOLD", "PENDING_PAYMENT", "CANCELLED", "REFUNDED"].includes(item.status),
+    item.lenderId === lenderId && isOperationalItem(item),
   );
   if (!items.length) return;
 

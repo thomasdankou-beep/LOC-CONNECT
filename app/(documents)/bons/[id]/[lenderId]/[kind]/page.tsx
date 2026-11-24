@@ -8,6 +8,10 @@ import { readHandover, readReturnCheck, returnCheckLabels } from "@/lib/material
 import { RESERVATION_STATUS, RETURN_REPORT_STATUS } from "@/lib/labels";
 import { getReservationDetail } from "@/services/reservations";
 import { scheduleOf } from "@/services/invoices";
+import { canRecordHandover } from "@/services/handover";
+import { findHandoverSignature, handoverSnapshot } from "@/services/handover-signatures";
+import { signatureInput } from "@/lib/signature";
+import { HandoverSignatureForm } from "@/features/lender/handover-signature-form";
 import { SignatureTrace } from "@/components/ui/signature-trace";
 import { PrintButton } from "@/features/invoices/print-button";
 import { reservationHref } from "@/features/invoices/helpers";
@@ -28,6 +32,12 @@ export default async function Page({ params }: { params: Promise<{ id: string; l
   if (!documents || !title) notFound();
 
   const { items, pickup, plan } = documents;
+  const snapshot = kind === "remise" ? handoverSnapshot(items) : undefined;
+  const signed = snapshot ? await findHandoverSignature(id, lenderId, snapshot.fingerprint) : null;
+  const signature = signatureInput.safeParse(signed?.strokes).data;
+  const canSign = kind === "remise" && items.every((item) => !item.returnReport && canRecordHandover(actor, plan.mode, item.status));
+  const recipients = new Set(snapshot?.lines.map((line) => line.recipient));
+  const recipient = recipients.size === 1 ? [...recipients][0] : undefined;
   const lender = items[0].lender;
   const delivery = pickup ? undefined : reservation.deliveries.find((entry) => entry.lenderId === lenderId);
   const schedule = scheduleOf(items, plan.deliverySlot ?? null, plan.returnSlot ?? null, delivery);
@@ -81,7 +91,7 @@ export default async function Page({ params }: { params: Promise<{ id: string; l
                         {handover.packaging && <p>Emballages remis · {handover.packaging}</p>}
                         {handover.accessories && <p>Accessoires remis · {handover.accessories}</p>}
                         {handover.notes && <p className="whitespace-pre-wrap">{handover.notes}</p>}
-                        {handover.signature && (
+                        {handover.signature && !signature && (
                           <figure className="mt-2">
                             <figcaption className="text-xs text-muted">Signature à la remise</figcaption>
                             <SignatureTrace strokes={handover.signature} className="h-12 w-40 max-w-full" />
@@ -116,7 +126,17 @@ export default async function Page({ params }: { params: Promise<{ id: string; l
             </tbody>
           </table>
         </div>
-        {kind !== "retour" && (
+        {kind === "remise" && signed && signature && (
+          <figure className="mt-6 break-inside-avoid rounded-control border border-line p-4">
+            <figcaption className="text-sm font-medium">Bon signé par {signed.signer} · {formatDateTime(signed.signedAt)}</figcaption>
+            <SignatureTrace strokes={signature} className="mt-2 h-20 w-64 max-w-full" />
+          </figure>
+        )}
+        {canSign && !signed && (snapshot
+          ? <HandoverSignatureForm key={snapshot.fingerprint} reservationId={id} fingerprint={snapshot.fingerprint} recipient={recipient} />
+          : <p className="mt-5 text-sm text-muted print:hidden">Enregistrez le contrôle de chaque article depuis la réservation pour faire signer ce bon.</p>
+        )}
+        {(kind === "preparation" || (kind === "remise" && !signed)) && (
           <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
             <div className="min-h-20 rounded-control border border-line p-3">{kind === "preparation" ? "Gestionnaire de stock" : "Client"}<p className="text-xs text-muted">Nom et signature</p></div>
             <div className="min-h-20 rounded-control border border-line p-3">{kind === "preparation" ? "Responsable de la commande" : "Loueur"}<p className="text-xs text-muted">Nom et signature</p></div>
