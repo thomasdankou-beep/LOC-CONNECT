@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSettings } from "@/lib/settings";
-import { depositFloorFrom, depositPercentFrom } from "@/services/pricing";
+import { DEFAULT_LENDER_DEPOSIT_PERCENT } from "@/services/pricing";
 import { PageShell } from "@/components/layout/page-shell";
 import { CaretDown } from "@/components/ui/icons";
 
@@ -14,13 +14,13 @@ export const metadata: Metadata = {
 type QA = { q: string; a: string };
 type Group = { title: string; items: QA[] };
 
-function groups(hours: { hold: number; freeze: number; contest: number; response: number; depositPercent: number | null; depositFloor: number | null }): Group[] {
+function groups(hours: { hold: number; freeze: number; contest: number; response: number }): Group[] {
   return [
     {
       title: "Réserver",
       items: [
-        { q: "Comment réserver du matériel ?", a: "Choisissez vos dates sur la fiche du produit, ajoutez-le au panier, puis passez au paiement. Vous pouvez commander chez plusieurs loueurs dans un même panier et payer une seule fois : chaque loueur reste responsable de sa propre partie de la commande." },
-        { q: "Mon matériel est-il bloqué pendant que je paie ?", a: `Oui. Dès que vous validez votre panier, le stock est bloqué ${hours.hold} minutes (HOLD) pour que personne ne vous le prenne pendant le paiement. Passé ce délai sans paiement, le blocage est libéré automatiquement.` },
+        { q: "Comment réserver du matériel ?", a: "Choisissez une journée ou une période, ajoutez les produits au panier et indiquez la livraison ou le retrait pour chaque loueur. Demandez la proforma, puis vérifiez le total et les créneaux une fois les validations reçues." },
+        { q: "Mon matériel est-il bloqué pendant que je paie ?", a: `Oui. Lorsque vous lancez le paiement de la proforma, le stock est bloqué pendant ${hours.hold} minutes. Passé ce délai sans paiement, le blocage est libéré automatiquement.` },
         { q: "Puis-je modifier ma réservation après paiement ?", a: `Oui, tant que la location n'a pas commencé et dans le délai prévu. Toute modification doit être acceptée par le loueur concerné, qui répond dans un délai de ${hours.response} heures. Sans réponse, la demande est transmise à notre équipe. Un complément éventuel se règle par un paiement distinct ; une baisse de prix est remboursée intégralement.` },
         { q: "Que se passe-t-il si le matériel n'est plus disponible ?", a: "La disponibilité est recalculée par nos serveurs à chaque étape. Si le stock a été pris entre-temps, nous vous l'indiquons avant le paiement, jamais après." },
       ],
@@ -28,11 +28,11 @@ function groups(hours: { hold: number; freeze: number; contest: number; response
     {
       title: "Payer et caution",
       items: [
-        { q: "Qu'est-ce que la caution ?", a: `${hours.depositPercent != null ? `La caution vaut ${hours.depositPercent} % du montant de la location chez chaque loueur${hours.depositFloor ? `, avec un minimum de ${hours.depositFloor} % de la valeur du matériel loué (pour le matériel cher loué peu de temps)` : ""}.` : "Chaque article loué peut avoir une caution, définie par le loueur."} Elle est payée avec votre réservation, ligne par ligne, et restituée après le constat de retour si le matériel revient en bon état. Elle n'est jamais mélangée avec celle d'un autre loueur.` },
+        { q: "Qu'est-ce que la caution ?", a: `Par défaut, la caution représente ${DEFAULT_LENDER_DEPOSIT_PERCENT} % du montant de la location chez chaque loueur, hors transport. Le loueur peut l’ajuster avant de valider la proforma. Le montant à restituer est déterminé après le constat de retour.` },
         { q: "Quand récupère-je ma caution ?", a: "Sans dommage constaté, la caution est restituée dès le constat de retour. En cas de dommage ou de perte, le loueur déclare le montant avec des photos. La retenue est plafonnée par le montant de la caution." },
         { q: "Puis-je contester une retenue ?", a: `Oui. Vous disposez de ${hours.contest} heures après le constat pour l'accepter ou le contester. Une contestation gèle la caution concernée et ouvre un litige arbitré par LOC'CONNECT.` },
         { q: "Puis-je payer en espèces ?", a: "Oui, chez les loueurs qui le proposent (indiqué « acompte + espèces » sur la fiche du produit et dans le panier). Vous payez en ligne un acompte et la caution, puis le reste en espèces au loueur quand il vous remet le matériel. Votre code de remise, visible dans votre réservation, sert de preuve : donnez-le au loueur seulement après avoir payé et reçu le matériel. Les autres loueurs restent payés en ligne, avec le même paiement unique." },
-        { q: "Quels moyens de paiement sont acceptés ?", a: "Orange Money, MTN Money, Moov Money, Wave et carte bancaire. Dans la version de démonstration, le paiement est simulé : aucun argent réel n'est débité." },
+        { q: "Quels moyens de paiement sont acceptés ?", a: "Les options proposées sont affichées à l’étape du paiement. En mode démonstration, les transactions sont simulées." },
       ],
     },
     {
@@ -64,7 +64,7 @@ function groups(hours: { hold: number; freeze: number; contest: number; response
 
 export default async function FaqPage() {
   const s = await getSettings();
-  const data = groups({ hold: s["hold.duration_minutes"], freeze: s["payout.freeze_hours"], contest: s["return.contest_window_hours"], response: s["modification.lender_response_hours"], depositPercent: depositPercentFrom(s), depositFloor: depositFloorFrom(s) });
+  const data = groups({ hold: s["hold.duration_minutes"], freeze: s["payout.freeze_hours"], contest: s["return.contest_window_hours"], response: s["modification.lender_response_hours"] });
   const jsonLd = { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: data.flatMap((g) => g.items).map((i) => ({ "@type": "Question", name: i.q, acceptedAnswer: { "@type": "Answer", text: i.a } })) };
   return (
     <PageShell title="Questions fréquentes" description="Tout ce qu'il faut savoir pour louer ou proposer du matériel sur LOC'CONNECT." narrow>
