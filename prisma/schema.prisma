@@ -598,6 +598,9 @@ model Product {
   reviews      Review[]
   promotions   Promotion[]
 
+  importReference String?
+
+  @@unique([lenderId, importReference])
   @@index([lenderId, categoryId, cityId, status])
   @@index([status, deletedAt])
 }

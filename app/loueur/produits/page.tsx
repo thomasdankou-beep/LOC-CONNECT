@@ -28,7 +28,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const result = await listLenderProducts(actor.lenderId, { q: sp.q, status: sp.status as ProductStatus | undefined, page: Number(sp.page) || 1 });
   return (
     <>
-      <PageHeader title="Mes produits" description="Créez, modifiez et publiez vos équipements. Les produits publiés passent par la modération de LOC'CONNECT." actions={can(actor, "PRODUCT_CREATE") && <LinkButton href="/loueur/produits/nouveau"><Plus size={18} /> Nouveau produit</LinkButton>} />
+      <PageHeader title="Mes produits" description="Créez, modifiez et publiez vos équipements. Les produits publiés passent par la modération de LOC'CONNECT." actions={can(actor, "PRODUCT_CREATE") && <div className="flex flex-wrap gap-2"><LinkButton href="/loueur/produits/importer" variant="secondary">Importer un catalogue</LinkButton><LinkButton href="/loueur/produits/nouveau"><Plus size={18} /> Nouveau produit</LinkButton></div>} />
       <FilterBar basePath="/loueur/produits" q={sp.q} status={sp.status} statuses={Object.entries(PRODUCT_STATUS).map(([value, e]) => ({ value, label: e.label }))} placeholder="Rechercher un produit" />
       <DataTable
         rows={result.rows}
