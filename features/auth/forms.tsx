@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Input, Select, Textarea } from "@/components/ui/field";
@@ -13,6 +13,8 @@ type City = { id: string; name: string };
 function useSubmit<T>(path: string, onDone: (data: T) => void) {
   const [error, setError] = useState<ApiError | null>(null);
   const [pending, setPending] = useState(false);
+  const [ready, setReady] = useState(false);
+  useEffect(() => { setReady(true); }, []);
   async function submit(body: unknown) {
     setPending(true);
     setError(null);
@@ -24,7 +26,7 @@ function useSubmit<T>(path: string, onDone: (data: T) => void) {
       setPending(false);
     }
   }
-  return { submit, error, pending, fieldError: (name: string) => error?.details?.find((d) => d.path === name)?.message };
+  return { submit, error, pending: pending || !ready, fieldError: (name: string) => error?.details?.find((d) => d.path === name)?.message };
 }
 
 const form = (e: React.FormEvent<HTMLFormElement>) => Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, string>;
@@ -46,7 +48,7 @@ export function LoginForm({ next, demo }: { next?: string; demo?: boolean }) {
   });
 
   return (
-    <form
+    <form method="post"
       onSubmit={(e) => {
         e.preventDefault();
         void submit({ email, password });
@@ -91,7 +93,7 @@ export function RegisterClientForm({ cities }: { cities: City[] }) {
     router.refresh();
   });
   return (
-    <form
+    <form method="post"
       onSubmit={(e) => {
         e.preventDefault();
         const v = form(e);
@@ -133,7 +135,7 @@ export function RegisterLenderForm({ cities }: { cities: City[] }) {
     router.refresh();
   });
   return (
-    <form
+    <form method="post"
       onSubmit={(e) => {
         e.preventDefault();
         const v = form(e);
@@ -185,7 +187,7 @@ export function ForgotForm() {
       </div>
     );
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void submit({ email: form(e).email }); }} className="flex flex-col gap-5">
+    <form method="post" onSubmit={(e) => { e.preventDefault(); void submit({ email: form(e).email }); }} className="flex flex-col gap-5">
       <Input label="Adresse e-mail" type="email" name="email" autoComplete="email" required />
       {error && <div role="alert"><Notice tone="danger">{error.message}</Notice></div>}
       <Button type="submit" size="lg" loading={pending}>Envoyer le lien</Button>
@@ -197,7 +199,7 @@ export function ResetForm({ token }: { token: string }) {
   const router = useRouter();
   const { submit, error, pending, fieldError } = useSubmit("/api/auth/reset-password", () => router.push("/connexion?reset=1"));
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void submit({ token, password: form(e).password }); }} className="flex flex-col gap-5">
+    <form method="post" onSubmit={(e) => { e.preventDefault(); void submit({ token, password: form(e).password }); }} className="flex flex-col gap-5">
       <Input label="Nouveau mot de passe" type="password" name="password" autoComplete="new-password" required hint="8 caractères minimum, avec au moins une lettre et un chiffre." error={fieldError("password")} />
       {error && !error.details?.length && <div role="alert"><Notice tone="danger">{error.message}</Notice></div>}
       <Button type="submit" size="lg" loading={pending}>Enregistrer le mot de passe</Button>
