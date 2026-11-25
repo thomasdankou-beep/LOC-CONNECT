@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Prisma, ProductStatus } from "@prisma/client";
-import { db, lockProducts, transaction } from "@/lib/db";
+import { db, lockProducts, transaction, type DbOrTx, type Tx } from "@/lib/db";
 import { AppError, forbidden, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { addDays, parseDate, todayUTC } from "@/lib/dates";
@@ -30,10 +30,10 @@ export type ProductInput = z.infer<typeof productInput>;
 
 type LenderActor = Actor & { lenderId: string };
 
-async function uniqueSlug(name: string): Promise<string> {
+async function uniqueSlug(name: string, client: DbOrTx = db): Promise<string> {
   const base = slugify(name) || "produit";
   let slug = base;
-  while (await db.product.findUnique({ where: { slug } })) slug = `${base}-${shortCode(4).toLowerCase()}`;
+  while (await client.product.findUnique({ where: { slug } })) slug = `${base}-${shortCode(4).toLowerCase()}`;
   return slug;
 }
 
@@ -51,33 +51,40 @@ export async function createProduct(actor: LenderActor, input: ProductInput) {
   const [category, city] = await Promise.all([db.category.findUnique({ where: { id: input.categoryId } }), db.city.findUnique({ where: { id: input.cityId } })]);
   if (!category || !city) throw new AppError("VALIDATION_ERROR", "Catégorie ou ville inconnue.");
   if (input.maxDays != null && input.maxDays < input.minDays) throw new AppError("VALIDATION_ERROR", "La durée maximale doit être supérieure à la durée minimale.");
-  const slug = await uniqueSlug(input.name);
   return transaction(async (tx) => {
-    const product = await tx.product.create({
-      data: {
-        slug,
-        name: input.name,
-        description: input.description,
-        conditions: input.conditions,
-        unitPrice: input.unitPrice,
-        stockQuantity: input.stockQuantity,
-        depositAmount: input.depositAmount,
-        refundPrice: input.refundPrice,
-        minDays: input.minDays,
-        maxDays: input.maxDays ?? null,
-        allowsExtraBilling: input.allowsExtraBilling ?? settings["deposit.extra_billing_default"],
-        status,
-        lenderId: actor.lenderId,
-        categoryId: input.categoryId,
-        cityId: input.cityId,
-        photos: { create: (input.photoUrls ?? []).map((url, position) => ({ url, position, alt: input.name })) },
-      },
-    });
-    await tx.stockMovement.create({ data: { productId: product.id, delta: input.stockQuantity, previousQty: 0, newQty: input.stockQuantity, reason: "INITIAL", createdById: actor.userId } });
-    await audit(tx, { userId: actor.userId, lenderId: actor.lenderId, action: "product.create", entity: "Product", entityId: product.id, newValue: { name: input.name, price: input.unitPrice, stock: input.stockQuantity, status }, meta: actor.meta });
+    const product = await insertProduct(tx, actor, input, status, settings["deposit.extra_billing_default"]);
     if (status === "PENDING_REVIEW") await notifyAdmins(tx, { type: "product.pending", title: "Produit à modérer", body: input.name, link: "/admin/produits" }, "ADMIN_PRODUCTS");
     return product;
   });
+}
+
+/** Écriture partagée avec l’import. Le service appelant valide les droits et les données. */
+export async function insertProduct(tx: Tx, actor: LenderActor, input: ProductInput, status: ProductStatus, extraBillingDefault: boolean, importReference?: string) {
+  const slug = await uniqueSlug(input.name, tx);
+  const product = await tx.product.create({
+    data: {
+      slug,
+      importReference,
+      name: input.name,
+      description: input.description,
+      conditions: input.conditions,
+      unitPrice: input.unitPrice,
+      stockQuantity: input.stockQuantity,
+      depositAmount: input.depositAmount,
+      refundPrice: input.refundPrice,
+      minDays: input.minDays,
+      maxDays: input.maxDays ?? null,
+      allowsExtraBilling: input.allowsExtraBilling ?? extraBillingDefault,
+      status,
+      lenderId: actor.lenderId,
+      categoryId: input.categoryId,
+      cityId: input.cityId,
+      photos: { create: (input.photoUrls ?? []).map((url, position) => ({ url, position, alt: input.name })) },
+    },
+  });
+  await tx.stockMovement.create({ data: { productId: product.id, delta: input.stockQuantity, previousQty: 0, newQty: input.stockQuantity, reason: "INITIAL", createdById: actor.userId } });
+  await audit(tx, { userId: actor.userId, lenderId: actor.lenderId, action: "product.create", entity: "Product", entityId: product.id, newValue: { name: input.name, price: input.unitPrice, stock: input.stockQuantity, status }, meta: actor.meta });
+  return product;
 }
 
 async function ownProduct(actor: LenderActor, id: string) {
