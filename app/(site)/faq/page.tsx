@@ -19,6 +19,7 @@ function groups(hours: { hold: number; freeze: number; contest: number; response
     {
       title: "Réserver",
       items: [
+        { q: "Puis-je demander une photo avant de réserver ?", a: "Oui. Sur la fiche de l’article, sélectionnez « Contacter le loueur » et connectez-vous à votre compte client. Vous pouvez échanger des messages et des photos avec le loueur dans « Mes messages »." },
         { q: "Comment réserver du matériel ?", a: "Choisissez une journée ou une période, ajoutez les produits au panier et indiquez la livraison ou le retrait pour chaque loueur. Demandez la proforma, puis vérifiez le total et les créneaux une fois les validations reçues." },
         { q: "Mon matériel est-il bloqué pendant que je paie ?", a: `Oui. Lorsque vous lancez le paiement de la proforma, le stock est bloqué pendant ${hours.hold} minutes. Passé ce délai sans paiement, le blocage est libéré automatiquement.` },
         { q: "Puis-je modifier ma réservation après paiement ?", a: `Oui, tant que la location n'a pas commencé et dans le délai prévu. Toute modification doit être acceptée par le loueur concerné, qui répond dans un délai de ${hours.response} heures. Sans réponse, la demande est transmise à notre équipe. Un complément éventuel se règle par un paiement distinct ; une baisse de prix est remboursée intégralement.` },

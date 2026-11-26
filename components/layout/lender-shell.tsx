@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { can, type Actor } from "@/lib/auth/actor";
 import { DashboardShell } from "./dashboard-shell";
 import type { NavGroup } from "./sidebar-nav";
-import { Bank, Bell, Buildings, CalendarBlank, CalendarCheck, ChartLineUp, Gauge, GearSix, Package, Scales, ShieldCheck, Star, Stack, Truck, Users, ArrowCounterClockwise, Receipt } from "@/components/ui/icons";
+import { Bank, Bell, ChatCircleText, Buildings, CalendarBlank, CalendarCheck, ChartLineUp, Gauge, GearSix, Package, Scales, ShieldCheck, Star, Stack, Truck, Users, ArrowCounterClockwise, Receipt } from "@/components/ui/icons";
 
 /** Navigation de l'espace loueur, filtrée selon les permissions du compte (propriétaire ou sous-compte). */
 export function LenderShell({ actor, children }: { actor: Actor; children: ReactNode }) {
@@ -39,6 +39,7 @@ export function LenderShell({ actor, children }: { actor: Actor; children: React
     {
       title: "Relation client",
       items: filter([
+        { href: "/loueur/messages", label: "Messages clients", icon: <ChatCircleText size={20} />, perms: ["PRODUCT_MESSAGE_MANAGE"] },
         { href: "/loueur/avis", label: "Avis", icon: <Star size={20} />, perms: ["REVIEW_VIEW"] },
         { href: "/loueur/clients", label: "Clients", icon: <Users size={20} />, perms: ["CUSTOMER_VIEW"] },
       ]),

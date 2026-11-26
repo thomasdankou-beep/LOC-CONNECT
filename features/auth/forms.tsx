@@ -86,10 +86,10 @@ export function LoginForm({ next, demo }: { next?: string; demo?: boolean }) {
   );
 }
 
-export function RegisterClientForm({ cities }: { cities: City[] }) {
+export function RegisterClientForm({ cities, articleId }: { cities: City[]; articleId?: string }) {
   const router = useRouter();
   const { submit, error, pending, fieldError } = useSubmit("/api/auth/register", () => {
-    router.push("/mon-compte");
+    router.push(articleId ? "/mes-messages/nouveau/" + encodeURIComponent(articleId) : "/mon-compte");
     router.refresh();
   });
   return (
@@ -122,7 +122,7 @@ export function RegisterClientForm({ cities }: { cities: City[] }) {
       )}
       <Button type="submit" size="lg" loading={pending}>Créer mon compte</Button>
       <p className="text-center text-sm text-muted">
-        Déjà inscrit ? <Link href="/connexion" className="font-medium text-royal-ink hover:underline">Se connecter</Link>
+        Déjà inscrit ? <Link href={articleId ? "/connexion?next=" + encodeURIComponent("/mes-messages/nouveau/" + articleId) : "/connexion"} className="font-medium text-royal-ink hover:underline">Se connecter</Link>
       </p>
     </form>
   );

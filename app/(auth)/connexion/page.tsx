@@ -10,6 +10,7 @@ export const metadata: Metadata = { title: "Connexion", robots: { index: false }
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; reset?: string }> }) {
   const sp = await searchParams;
+  const article = typeof sp.next === "string" ? /^\/mes-messages\/nouveau\/([a-zA-Z0-9_-]+)$/.exec(sp.next)?.[1] : undefined;
   const actor = await getActor();
   if (actor) redirect(actor.accountType === "ADMIN" ? "/admin" : actor.accountType === "LENDER" ? "/loueur/dashboard" : "/mon-compte");
   return (
@@ -21,7 +22,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <LoginForm next={sp.next} demo={env().DEMO_MODE === "1"} />
       </div>
       <p className="mt-8 text-center text-sm text-muted">
-        Pas encore de compte ? <Link href="/inscription" className="font-medium text-royal-ink hover:underline">Créer un compte</Link> ou <Link href="/devenir-loueur" className="font-medium text-royal-ink hover:underline">devenir loueur</Link>
+        Pas encore de compte ? <Link href={article ? "/inscription?article=" + encodeURIComponent(article) : "/inscription"} className="font-medium text-royal-ink hover:underline">Créer un compte</Link> ou <Link href="/devenir-loueur" className="font-medium text-royal-ink hover:underline">devenir loueur</Link>
       </p>
     </>
   );

@@ -343,6 +343,8 @@ model User {
   notifications        Notification[]
   disputesOpened       Dispute[]             @relation("DisputeOpener")
   disputeMessages      DisputeMessage[]
+  productConversations ProductConversation[]
+  productMessages      ProductMessage[]
   auditLogs            AuditLog[]
   clientScore          ClientScore?
   modifications        ModificationRequest[] @relation("ModificationRequester")
@@ -481,6 +483,7 @@ model Lender {
   lenderScore      LenderScore?
   modifications    ModificationRequest[]
   handoverSignatures HandoverSignature[]
+  productConversations ProductConversation[]
 
   @@index([status, cityId])
 }
@@ -597,6 +600,7 @@ model Product {
   items        ReservationItem[]
   reviews      Review[]
   promotions   Promotion[]
+  conversations ProductConversation[]
 
   importReference String?
 
@@ -1316,6 +1320,47 @@ model Dispute {
 
   @@index([status, createdAt])
   @@index([lenderId, status])
+}
+
+model ProductConversation {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  clientId  String
+  client    User     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  lenderId  String
+  lender    Lender   @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @default(now()) @updatedAt
+  messages  ProductMessage[]
+
+  @@unique([clientId, productId, lenderId])
+  @@index([clientId, updatedAt])
+  @@index([lenderId, updatedAt])
+}
+
+model ProductMessage {
+  id             String              @id @default(cuid())
+  conversationId String
+  conversation   ProductConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User                @relation(fields: [authorId], references: [id])
+  requestId      String
+  body           String
+  createdAt      DateTime            @default(now())
+  photos         ProductMessagePhoto[]
+
+  @@unique([conversationId, authorId, requestId])
+  @@index([conversationId, createdAt, id])
+}
+
+model ProductMessagePhoto {
+  id         String         @id @default(cuid())
+  messageId  String
+  message    ProductMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  storageKey String         @unique
+  position   Int
+
+  @@unique([messageId, position])
 }
 
 model DisputeMessage {
