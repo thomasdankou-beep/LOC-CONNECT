@@ -34,6 +34,9 @@ export const PERMISSIONS: PermissionDef[] = [
     ["REVIEW_VIEW", "Voir les avis"],
     ["REVIEW_REPLY", "Répondre aux avis"],
   ]),
+  ...lender("Relation client", [
+    ["PRODUCT_MESSAGE_MANAGE", "Lire les questions sur les articles et y répondre"],
+  ]),
   ...lender("Finance", [
     ["FINANCE_VIEW", "Voir les revenus"],
     ["PAYOUT_VIEW", "Voir les versements"],
@@ -133,7 +136,7 @@ export const SYSTEM_ROLES: SystemRoleDef[] = [
     name: "Responsable commandes",
     description: "Réservations, préparation et modifications",
     scope: "LENDER",
-    permissions: ["ORDER_VIEW", "ORDER_PREPARE", "ORDER_VALIDATE", "ORDER_STATUS_UPDATE", "MODIFICATION_DECIDE", "CUSTOMER_VIEW", "DISPUTE_VIEW", "DISPUTE_RESPOND", "REVIEW_VIEW", "REVIEW_REPLY", "PRODUCT_VIEW"],
+    permissions: ["ORDER_VIEW", "ORDER_PREPARE", "ORDER_VALIDATE", "ORDER_STATUS_UPDATE", "MODIFICATION_DECIDE", "PRODUCT_MESSAGE_MANAGE", "CUSTOMER_VIEW", "DISPUTE_VIEW", "DISPUTE_RESPOND", "REVIEW_VIEW", "REVIEW_REPLY", "PRODUCT_VIEW"],
   },
   {
     code: "FINANCE_MANAGER",

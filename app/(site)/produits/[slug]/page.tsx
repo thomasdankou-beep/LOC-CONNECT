@@ -9,8 +9,9 @@ import { getProductBySlug, getProductReviews, similarProducts } from "@/services
 import { AppError } from "@/lib/errors";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { LinkButton } from "@/components/ui/button";
 import { Avatar, Stars } from "@/components/ui/misc";
-import { CaretRight, HandCoins, MapPin, ShieldCheck, Storefront, Truck, Info } from "@/components/ui/icons";
+import { ChatCircleText, CaretRight, HandCoins, MapPin, ShieldCheck, Storefront, Truck, Info } from "@/components/ui/icons";
 import { getSettings } from "@/lib/settings";
 import { DEFAULT_LENDER_DEPOSIT_PERCENT, effectivePaymentMode } from "@/services/pricing";
 import { commissionRateFor } from "@/services/plans";
@@ -51,6 +52,7 @@ export default async function ProductPage({ params, searchParams }: Props) {
   const initialStart = sp.start && /^\d{4}-\d{2}-\d{2}$/.test(sp.start) ? sp.start : undefined;
   const initialEnd = sp.end && /^\d{4}-\d{2}-\d{2}$/.test(sp.end) ? sp.end : undefined;
   const lender = product.lender;
+  const questionPath = "/mes-messages/nouveau/" + product.id;
   const base = process.env.APP_URL ?? "http://localhost:3000";
 
   const jsonLd = {
@@ -150,6 +152,11 @@ export default async function ProductPage({ params, searchParams }: Props) {
               </div>
               <Link href={`/loueurs/${lender.slug}`} className="hidden shrink-0 items-center gap-1.5 text-sm font-medium text-royal-ink hover:underline sm:inline-flex"><Storefront size={16} /> Voir le profil</Link>
             </div>
+            {(!actor || isClient) && (
+              <LinkButton href={actor ? questionPath : "/connexion?next=" + encodeURIComponent(questionPath)} variant="secondary" className="mt-4 w-full sm:w-auto">
+                <ChatCircleText size={20} /> Contacter le loueur
+              </LinkButton>
+            )}
           </Card>
 
           <section aria-labelledby="h-reviews">

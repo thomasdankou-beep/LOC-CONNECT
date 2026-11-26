@@ -11,6 +11,13 @@ const nextConfig = {
   devIndicators: false,
   poweredByHeader: false,
   images: {
+    // Les photos privées passent toujours par le contrôle d’accès, sans cache d’images partagé.
+    localPatterns: [
+      { pathname: "/api/files/public/**" },
+      { pathname: "/brand/**" },
+      { pathname: "/_next/static/media/**" },
+      { pathname: "/icon.svg" },
+    ],
     remotePatterns: [
       { protocol: "https", hostname: "picsum.photos" },
       { protocol: "https", hostname: "images.unsplash.com" },

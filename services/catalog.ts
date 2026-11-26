@@ -31,7 +31,7 @@ export const productCardInclude = {
 
 export type ProductCard = Prisma.ProductGetPayload<{ include: typeof productCardInclude }> & { availableQty?: number | null; featured?: boolean };
 
-const PUBLIC_WHERE: Prisma.ProductWhereInput = {
+export const PUBLIC_WHERE: Prisma.ProductWhereInput = {
   status: "PUBLISHED",
   deletedAt: null,
   lender: { status: "APPROVED" },

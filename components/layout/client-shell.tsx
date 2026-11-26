@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { Actor } from "@/lib/auth/actor";
 import { DashboardShell } from "./dashboard-shell";
 import type { NavGroup } from "./sidebar-nav";
-import { Bell, CalendarCheck, CreditCard, Gauge, Heart, Lifebuoy, Scales, Star, UserCircle, ArrowCounterClockwise, Receipt } from "@/components/ui/icons";
+import { Bell, ChatCircleText, CalendarCheck, CreditCard, Gauge, Heart, Lifebuoy, Scales, Star, UserCircle, ArrowCounterClockwise, Receipt } from "@/components/ui/icons";
 
 const GROUPS: NavGroup[] = [
   {
@@ -17,6 +17,7 @@ const GROUPS: NavGroup[] = [
   {
     title: "Mon activité",
     items: [
+      { href: "/mes-messages", label: "Mes messages", icon: <ChatCircleText size={20} /> },
       { href: "/mes-favoris", label: "Mes favoris", icon: <Heart size={20} /> },
       { href: "/mes-avis", label: "Mes avis", icon: <Star size={20} /> },
       { href: "/mes-litiges", label: "Mes litiges", icon: <Scales size={20} /> },
